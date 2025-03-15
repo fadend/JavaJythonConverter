@@ -2,70 +2,70 @@
 package com.cottagesystems.convert;
 
 import static com.cottagesystems.convert.ConvertJavaToPython.stringMethods;
-import japa.parser.ASTHelper;
-import japa.parser.ParseException;
-import japa.parser.ast.CompilationUnit;
-import japa.parser.ast.ImportDeclaration;
-import japa.parser.ast.Node;
-import japa.parser.ast.body.BodyDeclaration;
-import japa.parser.ast.body.ClassOrInterfaceDeclaration;
-import japa.parser.ast.body.ConstructorDeclaration;
-import japa.parser.ast.body.EmptyMemberDeclaration;
-import japa.parser.ast.body.EnumConstantDeclaration;
-import japa.parser.ast.body.EnumDeclaration;
-import japa.parser.ast.body.FieldDeclaration;
-import japa.parser.ast.body.InitializerDeclaration;
-import japa.parser.ast.body.MethodDeclaration;
-import japa.parser.ast.body.ModifierSet;
-import japa.parser.ast.body.MultiTypeParameter;
-import japa.parser.ast.body.Parameter;
-import japa.parser.ast.body.TypeDeclaration;
-import japa.parser.ast.body.VariableDeclarator;
-import japa.parser.ast.body.VariableDeclaratorId;
-import japa.parser.ast.comments.Comment;
-import japa.parser.ast.expr.AnnotationExpr;
-import japa.parser.ast.expr.ArrayAccessExpr;
-import japa.parser.ast.expr.ArrayCreationExpr;
-import japa.parser.ast.expr.ArrayInitializerExpr;
-import japa.parser.ast.expr.AssignExpr;
-import japa.parser.ast.expr.BinaryExpr;
-import japa.parser.ast.expr.BooleanLiteralExpr;
-import japa.parser.ast.expr.CastExpr;
-import japa.parser.ast.expr.CharLiteralExpr;
-import japa.parser.ast.expr.ConditionalExpr;
-import japa.parser.ast.expr.DoubleLiteralExpr;
-import japa.parser.ast.expr.EnclosedExpr;
-import japa.parser.ast.expr.Expression;
-import japa.parser.ast.expr.FieldAccessExpr;
-import japa.parser.ast.expr.IntegerLiteralExpr;
-import japa.parser.ast.expr.LongLiteralExpr;
-import japa.parser.ast.expr.MarkerAnnotationExpr;
-import japa.parser.ast.expr.MethodCallExpr;
-import japa.parser.ast.expr.NameExpr;
-import japa.parser.ast.expr.NullLiteralExpr;
-import japa.parser.ast.expr.ObjectCreationExpr;
-import japa.parser.ast.expr.StringLiteralExpr;
-import japa.parser.ast.expr.SuperExpr;
-import japa.parser.ast.expr.UnaryExpr;
-import japa.parser.ast.expr.VariableDeclarationExpr;
-import japa.parser.ast.stmt.BlockStmt;
-import japa.parser.ast.stmt.CatchClause;
-import japa.parser.ast.stmt.EmptyStmt;
-import japa.parser.ast.stmt.ExpressionStmt;
-import japa.parser.ast.stmt.ForStmt;
-import japa.parser.ast.stmt.ForeachStmt;
-import japa.parser.ast.stmt.IfStmt;
-import japa.parser.ast.stmt.ReturnStmt;
-import japa.parser.ast.stmt.Statement;
-import japa.parser.ast.stmt.SwitchEntryStmt;
-import japa.parser.ast.stmt.SwitchStmt;
-import japa.parser.ast.stmt.ThrowStmt;
-import japa.parser.ast.stmt.TryStmt;
-import japa.parser.ast.stmt.WhileStmt;
-import japa.parser.ast.type.ClassOrInterfaceType;
-import japa.parser.ast.type.PrimitiveType;
-import japa.parser.ast.type.ReferenceType;
-import japa.parser.ast.type.Type;
+import com.github.javaparser.ASTHelper;
+import com.github.javaparser.ParseException;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.ImportDeclaration;
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.BodyDeclaration;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.ConstructorDeclaration;
+import com.github.javaparser.ast.body.EmptyMemberDeclaration;
+import com.github.javaparser.ast.body.EnumConstantDeclaration;
+import com.github.javaparser.ast.body.EnumDeclaration;
+import com.github.javaparser.ast.body.FieldDeclaration;
+import com.github.javaparser.ast.body.InitializerDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.ModifierSet;
+import com.github.javaparser.ast.body.MultiTypeParameter;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.body.VariableDeclaratorId;
+import com.github.javaparser.ast.comments.Comment;
+import com.github.javaparser.ast.expr.AnnotationExpr;
+import com.github.javaparser.ast.expr.ArrayAccessExpr;
+import com.github.javaparser.ast.expr.ArrayCreationExpr;
+import com.github.javaparser.ast.expr.ArrayInitializerExpr;
+import com.github.javaparser.ast.expr.AssignExpr;
+import com.github.javaparser.ast.expr.BinaryExpr;
+import com.github.javaparser.ast.expr.BooleanLiteralExpr;
+import com.github.javaparser.ast.expr.CastExpr;
+import com.github.javaparser.ast.expr.CharLiteralExpr;
+import com.github.javaparser.ast.expr.ConditionalExpr;
+import com.github.javaparser.ast.expr.DoubleLiteralExpr;
+import com.github.javaparser.ast.expr.EnclosedExpr;
+import com.github.javaparser.ast.expr.Expression;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
+import com.github.javaparser.ast.expr.IntegerLiteralExpr;
+import com.github.javaparser.ast.expr.LongLiteralExpr;
+import com.github.javaparser.ast.expr.MarkerAnnotationExpr;
+import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.ast.expr.NullLiteralExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.expr.StringLiteralExpr;
+import com.github.javaparser.ast.expr.SuperExpr;
+import com.github.javaparser.ast.expr.UnaryExpr;
+import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.stmt.BlockStmt;
+import com.github.javaparser.ast.stmt.CatchClause;
+import com.github.javaparser.ast.stmt.EmptyStmt;
+import com.github.javaparser.ast.stmt.ExpressionStmt;
+import com.github.javaparser.ast.stmt.ForStmt;
+import com.github.javaparser.ast.stmt.ForEachStmt;
+import com.github.javaparser.ast.stmt.IfStmt;
+import com.github.javaparser.ast.stmt.ReturnStmt;
+import com.github.javaparser.ast.stmt.Statement;
+import com.github.javaparser.ast.stmt.SwitchEntryStmt;
+import com.github.javaparser.ast.stmt.SwitchStmt;
+import com.github.javaparser.ast.stmt.ThrowStmt;
+import com.github.javaparser.ast.stmt.TryStmt;
+import com.github.javaparser.ast.stmt.WhileStmt;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
+import com.github.javaparser.ast.type.PrimitiveType;
+import com.github.javaparser.ast.type.ReferenceType;
+import com.github.javaparser.ast.type.Type;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -120,7 +120,7 @@ public class ConvertJavaToJavascript {
         ParseException throwMe;
         try {
             ByteArrayInputStream ins= new ByteArrayInputStream( javasrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= japa.parser.JavaParser.parse(ins,"UTF-8");
+            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,"UTF-8");
             String src= doConvert( "", unit );
             if ( !additionalImports.isEmpty() ) {
                 StringBuilder additionalImportsSrc= new StringBuilder();
@@ -159,7 +159,7 @@ public class ConvertJavaToJavascript {
             String[] lines= javasrc.split("\n");
             numLinesIn= lines.length;
             int offset=0;
-            Expression parseExpression = japa.parser.JavaParser.parseExpression(javasrc);
+            Expression parseExpression = com.github.javaparser.JavaParser.parseExpression(javasrc);
             StringBuilder bb= new StringBuilder( doConvert( "", parseExpression ) );
             int linesHandled=0;
             while ( (linesHandled+parseExpression.getEndLine())<lines.length ) {
@@ -174,7 +174,7 @@ public class ConvertJavaToJavascript {
                     break;
                 }
                 linesHandled+= additionalLinesHandled;
-                parseExpression = japa.parser.JavaParser.parseExpression(javasrc.substring(offset));
+                parseExpression = com.github.javaparser.JavaParser.parseExpression(javasrc.substring(offset));
                 bb.append( "\n" ).append( doConvert( "", parseExpression ) );
             }
             String src= bb.toString();
@@ -207,7 +207,7 @@ public class ConvertJavaToJavascript {
         
         try {
             if ( numLinesIn < 2 ) {
-                Statement parsed = japa.parser.JavaParser.parseStatement(javasrc);
+                Statement parsed = com.github.javaparser.JavaParser.parseStatement(javasrc);
                 return doConvert("", parsed);
             }
         } catch (ParseException ex2) {
@@ -216,7 +216,7 @@ public class ConvertJavaToJavascript {
 
         try {
             if ( numLinesIn < 2 ) {
-                BodyDeclaration parsed = japa.parser.JavaParser.parseBodyDeclaration(javasrc);
+                BodyDeclaration parsed = com.github.javaparser.JavaParser.parseBodyDeclaration(javasrc);
                 return doConvert("", parsed);
             }
         } catch (ParseException ex3 ) {
@@ -224,7 +224,7 @@ public class ConvertJavaToJavascript {
         }
 
         try {
-            Statement parsed = japa.parser.JavaParser.parseBlock(javasrc);
+            Statement parsed = com.github.javaparser.JavaParser.parseBlock(javasrc);
             return doConvert("", parsed);
         } catch ( ParseException ex ) {
             throwMe =ex;
@@ -233,7 +233,7 @@ public class ConvertJavaToJavascript {
         try {
             String ssrc= utilMakeClass(javasrc);
             ByteArrayInputStream ins= new ByteArrayInputStream( ssrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= japa.parser.JavaParser.parse(ins,"UTF-8");
+            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,"UTF-8");
             String src= doConvert( "", unit );
             src= utilUnMakeClass(src);
             
@@ -438,8 +438,8 @@ public class ConvertJavaToJavascript {
             case "Parameter":
                 result= indent + ((Parameter)n).getId().getName(); // TODO: varargs, etc
                 break;
-            case "ForeachStmt":
-                result= doConvertForeachStmt(indent,(ForeachStmt)n);
+            case "ForEachStmt":
+                result= doConvertForEachStmt(indent,(ForEachStmt)n);
                 break;
             case "EmptyStmt":
                 result= doConvertEmptyStmt(indent,(EmptyStmt)n);
@@ -2419,12 +2419,12 @@ public class ConvertJavaToJavascript {
         return String.join( "\n", ss );
     }
 
-    private String doConvertForeachStmt(String indent, ForeachStmt foreachStmt) {
-        String vv= foreachStmt.getVariable().getVars().get(0).getId().getName();
+    private String doConvertForEachStmt(String indent, ForEachStmt ForEachStmt) {
+        String vv= ForEachStmt.getVariable().getVars().get(0).getId().getName();
         StringBuilder sb= new StringBuilder(indent);
-        sb.append( doConvert( "", foreachStmt.getIterable() ) );
+        sb.append( doConvert( "", ForEachStmt.getIterable() ) );
         sb.append(".forEach( function ( ").append(vv).append(" ) {\n ");
-        sb.append(  doConvert( indent + s4, foreachStmt.getBody() ) );
+        sb.append(  doConvert( indent + s4, ForEachStmt.getBody() ) );
         sb.append( indent ).append("}, this )");
         return sb.toString();
     }

@@ -1,7 +1,7 @@
 
 package com.cottagesystems.convert;
 
-import japa.parser.ParseException;
+import com.github.javaparser.ParseException;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
