@@ -120,7 +120,7 @@ public class ConvertJavaToJavascript {
         ParseException throwMe;
         try {
             ByteArrayInputStream ins= new ByteArrayInputStream( javasrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,"UTF-8");
+            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
             String src= doConvert( "", unit );
             if ( !additionalImports.isEmpty() ) {
                 StringBuilder additionalImportsSrc= new StringBuilder();
@@ -233,7 +233,7 @@ public class ConvertJavaToJavascript {
         try {
             String ssrc= utilMakeClass(javasrc);
             ByteArrayInputStream ins= new ByteArrayInputStream( ssrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,"UTF-8");
+            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
             String src= doConvert( "", unit );
             src= utilUnMakeClass(src);
             
@@ -1013,7 +1013,7 @@ public class ConvertJavaToJavascript {
         
         StringBuilder result= new StringBuilder();
         
-        List<Statement> statements= blockStmt.getStmts();
+        List<Statement> statements= blockStmt.getStatements();
         if ( statements==null ) {
             popScopeStack();
             return "";
@@ -1257,7 +1257,7 @@ public class ConvertJavaToJavascript {
             return guessType(expr.getInner());
         } else if ( clas instanceof UnaryExpr ) {
             UnaryExpr ue= ((UnaryExpr)clas);
-            return guessType(ue.getExpr());
+            return guessType(ue.getExpression());
         } else if ( clas instanceof BinaryExpr ) {
             BinaryExpr be= ((BinaryExpr)clas);
             Type leftType= guessType( be.getLeft() );
@@ -1489,7 +1489,7 @@ public class ConvertJavaToJavascript {
     }
     
     private String doConvertUnaryExpr(String indent, UnaryExpr unaryExpr) {
-        String n= doConvert("",unaryExpr.getExpr()); 
+        String n= doConvert("",unaryExpr.getExpression()); 
         switch (unaryExpr.getOperator()) {
             case preIncrement: {
                 return indent + "++" + n;
@@ -1510,7 +1510,7 @@ public class ConvertJavaToJavascript {
                 return indent + "-" + n;
             }
             case not: {
-                if ( unaryExpr.getExpr() instanceof MethodCallExpr && ((MethodCallExpr)unaryExpr.getExpr()).getName().equals("equals") ) {
+                if ( unaryExpr.getExpression() instanceof MethodCallExpr && ((MethodCallExpr)unaryExpr.getExpression()).getName().equals("equals") ) {
                     if ( n.split("==").length==2 ) {
                         return indent + n.replaceAll("==","!="); // I will regret this some day.
                     } else {
@@ -2058,10 +2058,10 @@ public class ConvertJavaToJavascript {
     }    
 
     private String doConvertReturnStmt(String indent, ReturnStmt returnStmt) {
-        if ( returnStmt.getExpr()==null ) {
+        if ( returnStmt.getExpression()==null ) {
             return indent + "return;";
         } else {
-            return indent + "return " + doConvert("", returnStmt.getExpr()) + ";";
+            return indent + "return " + doConvert("", returnStmt.getExpression()) + ";";
         }        
     }
 
@@ -2230,8 +2230,8 @@ public class ConvertJavaToJavascript {
                 b.append( nextIndent ).append( "case ").append( slabel ).append(":\n");
             }
             
-            if ( ses.getStmts()!=null ) {
-                for ( Statement s : ses.getStmts() ) {
+            if ( ses.getStatements()!=null ) {
+                for ( Statement s : ses.getStatements() ) {
                     b.append( doConvert( nextNextIndent,s) );
                     b.append( "\n" );
                 }
@@ -2242,7 +2242,7 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertThrowStmt(String indent, ThrowStmt throwStmt) {
-        return indent + "throw "+ doConvert("",throwStmt.getExpr()) + ";";
+        return indent + "throw "+ doConvert("",throwStmt.getExpression()) + ";";
     }
 
     private String readFromFile(URL resource) {
@@ -2306,7 +2306,7 @@ public class ConvertJavaToJavascript {
         sb.append( indent ).append( "try {\n");
         sb.append( doConvert( indent+s4, tryStmt.getTryBlock() ) );
         int count=0;
-        for ( CatchClause cc: tryStmt.getCatchs() ) {
+        for ( CatchClause cc: tryStmt.getCatchClauses() ) {
             count++;
             String id= doConvert( "",cc.getExcept().getId() );
             sb.append(indent).append("} catch (").append(id).append(") {");
@@ -2352,7 +2352,7 @@ public class ConvertJavaToJavascript {
                 type= "str";
                 break;
             case "char":
-                if ( isIntegerType(guessType(castExpr.getExpr())) ) {
+                if ( isIntegerType(guessType(castExpr.getExpression())) ) {
                     type = "chr";
                 } else {
                     type = "str";
@@ -2368,9 +2368,9 @@ public class ConvertJavaToJavascript {
                 type = ""; // (FieldHandler)fh
                 break;
         }
-        String scastExpr= doConvert("", castExpr.getExpr() );
+        String scastExpr= doConvert("", castExpr.getExpression() );
         
-        Type argType= guessType(castExpr.getExpr());
+        Type argType= guessType(castExpr.getExpression());
         if ( argType!=null ) {
             if ( argType.equals( ASTHelper.DOUBLE_TYPE ) ) {
                 if ( type.equals("int") || type.equals("long") ) {

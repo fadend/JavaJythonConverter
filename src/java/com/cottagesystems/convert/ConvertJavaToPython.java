@@ -391,7 +391,7 @@ public class ConvertJavaToPython {
         ParseException throwMe;
         try {
             ByteArrayInputStream ins= new ByteArrayInputStream( javasrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,"UTF-8");
+            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
             String src= doConvert( "", unit );
             if ( additionalImports!=null ) {
                 StringBuilder sb= new StringBuilder();
@@ -527,7 +527,7 @@ public class ConvertJavaToPython {
         try {
             String ssrc= utilMakeClass(javasrc);
             ByteArrayInputStream ins= new ByteArrayInputStream( ssrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,"UTF-8");
+            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
             String src= doConvert( "", unit );
             src= utilUnMakeClass(src);
             
