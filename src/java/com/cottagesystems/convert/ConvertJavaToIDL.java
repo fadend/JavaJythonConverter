@@ -14,7 +14,6 @@ import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.InitializerDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.ModifierSet;
 import com.github.javaparser.ast.body.MultiTypeParameter;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
@@ -125,6 +124,30 @@ public class ConvertJavaToIDL {
     private boolean onlyStatic = true;
     
     public static final String PROP_ONLYSTATIC = "onlyStatic";
+
+
+    private static boolean isStaticField(FieldDeclaration field) {
+        if (field == null) {
+            return false;
+        }
+        return field.getModifiers().contains(Modifier.staticModifier());
+    }
+
+    // TODO: avoid duplication between the isStatic methods.
+    private static boolean isStaticMethod(MethodDeclaration method) {
+        if (method == null) {
+            return false;
+        }
+        return method.getModifiers().contains(Modifier.staticModifier());
+    }
+
+    private static Type getFieldType(FieldDeclaration field) {
+        List<VariableDeclarator> variables = field.getVariables();
+        if (variables.size() != 1) {
+            throw new IllegalArgumentException("Expected exactly one variable for " + field.toString());
+        }
+        return variables.get(0).getType();
+    }
 
     /**
      * true indicates that only static methods are to be pulled out of the class.
@@ -584,17 +607,17 @@ public class ConvertJavaToIDL {
                     && ((IntegerLiteralExpr)b.getRight()).toString().equals("0") ) {
                 if ( null!=b.getOperator() ) switch (b.getOperator()) {
                     case GREATER:
-                        return doConvert("",mce.getScope().get()) + " gt " + doConvert("",mce.getArgs().get(0));
+                        return doConvert("",mce.getScope().get()) + " gt " + doConvert("",mce.getArguments().get(0));
                     case GREATER_EQUALS:
-                        return doConvert("",mce.getScope().get()) + " ge " + doConvert("",mce.getArgs().get(0));
+                        return doConvert("",mce.getScope().get()) + " ge " + doConvert("",mce.getArguments().get(0));
                     case LESS:
-                        return doConvert("",mce.getScope().get()) + " lt " + doConvert("",mce.getArgs().get(0));
+                        return doConvert("",mce.getScope().get()) + " lt " + doConvert("",mce.getArguments().get(0));
                     case LESS_EQUALS:
-                        return doConvert("",mce.getScope().get()) + " le " + doConvert("",mce.getArgs().get(0));
+                        return doConvert("",mce.getScope().get()) + " le " + doConvert("",mce.getArguments().get(0));
                     case EQUALS:
-                        return doConvert("",mce.getScope().get()) + " eq " + doConvert("",mce.getArgs().get(0));
+                        return doConvert("",mce.getScope().get()) + " eq " + doConvert("",mce.getArguments().get(0));
                     case NOT_EQUALS:
-                        return doConvert("",mce.getScope().get()) + " ne " + doConvert("",mce.getArgs().get(0));
+                        return doConvert("",mce.getScope().get()) + " ne " + doConvert("",mce.getArguments().get(0));
                     default:
                         break;
                 }
@@ -726,13 +749,13 @@ public class ConvertJavaToIDL {
                 return null;
             }
         } else if ( clas instanceof IntegerLiteralExpr ) {
-            return new PrimititeType(Primitive.INT);
+            return new PrimitiveType(Primitive.INT);
         } else if ( clas instanceof CharLiteralExpr ) {
-            return new PrimititeType(Primitive.CHAR);
+            return new PrimitiveType(Primitive.CHAR);
         } else if ( clas instanceof LongLiteralExpr ) {
-            return new PrimititeType(Primitive.LONG);
+            return new PrimitiveType(Primitive.LONG);
         } else if ( clas instanceof DoubleLiteralExpr ) {
-            return new PrimititeType(Primitive.DOUBLE);
+            return new PrimitiveType(Primitive.DOUBLE);
         } else if ( clas instanceof StringLiteralExpr ) {
             return STRING_TYPE;
         } else if ( clas instanceof MethodCallExpr ) {
@@ -764,19 +787,19 @@ public class ConvertJavaToIDL {
                         case "toUpperCase": 
                             return scopeType;
                         case "length": 
-                            return PrimitiveType(Primitive.INT);
+                            return new PrimitiveType(Primitive.INT);
                         case "charAt":
-                            return PrimitiveType(Primitive.CHAR);
+                            return new PrimitiveType(Primitive.CHAR);
                     }
                 } else if ( scopeType.toString().equals("Arrays") ) {
                     if ( mce.getName().toString().equals("copyOfRange") ) {
-                            return guessType( mce.getArgs().get(0) );
+                            return guessType( mce.getArguments().get(0) );
                     }
                 }
             }
             switch ( mce.getName().toString() ) { // TODO: consider t
-                case "charAt": return PrimitiveType(Primitive.CHAR);
-                case "copyOfRange": return guessType( mce.getArgs().get(0) );
+                case "charAt": return new PrimitiveType(Primitive.CHAR);
+                case "copyOfRange": return guessType( mce.getArguments().get(0) );
             }
         }
         return null;
@@ -854,7 +877,7 @@ public class ConvertJavaToIDL {
         // TODO: what should we do if the scope is missing.
         Expression clas= methodCallExpr.getScope().get();
         String name= methodCallExpr.getName().toString();
-        List<Expression> args= methodCallExpr.getArgs();
+        List<Expression> args= methodCallExpr.getArguments();
             
         if ( name==null ) {
             name=""; // I don't think this happens
@@ -1257,15 +1280,15 @@ public class ConvertJavaToIDL {
         if ( name.equals("println") && clas instanceof FieldAccessExpr &&
                 ((FieldAccessExpr)clas).getField().equals("err") ) {
             StringBuilder sb= new StringBuilder();
-            if (  methodCallExpr.getArgs().get(0) instanceof StringLiteralExpr ) {
-                String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+            if (  methodCallExpr.getArguments().get(0) instanceof StringLiteralExpr ) {
+                String s= doConvert( "", methodCallExpr.getArguments().get(0) );
                 sb.append(indent).append( "printf, -2, " ).append(s).append("");
             } else {
                 String strss;
-                if ( !isStringType( guessType(methodCallExpr.getArgs().get(0)) ) ) {
-                    strss= "strtrim("+ doConvert( "", methodCallExpr.getArgs().get(0) ) + ",2)";
+                if ( !isStringType( guessType(methodCallExpr.getArguments().get(0)) ) ) {
+                    strss= "strtrim("+ doConvert( "", methodCallExpr.getArguments().get(0) ) + ",2)";
                 } else {
-                    strss= doConvert( "", methodCallExpr.getArgs().get(0) );
+                    strss= doConvert( "", methodCallExpr.getArguments().get(0) );
                 }
                 sb.append(indent).append( "printf, -2, " ).append( strss );
             }
@@ -1273,28 +1296,28 @@ public class ConvertJavaToIDL {
         } else if ( name.equals("println") && clas instanceof FieldAccessExpr &&
                 ((FieldAccessExpr)clas).getField().equals("out") ) {
             StringBuilder sb= new StringBuilder();
-            if (  methodCallExpr.getArgs().get(0) instanceof StringLiteralExpr ) {
-                String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+            if (  methodCallExpr.getArguments().get(0) instanceof StringLiteralExpr ) {
+                String s= doConvert( "", methodCallExpr.getArguments().get(0) );
                 sb.append(indent).append( "print," ).append( s );
             } else {
-                sb.append(indent).append( "print," ).append( doConvert( "", methodCallExpr.getArgs().get(0) ) );
+                sb.append(indent).append( "print," ).append( doConvert( "", methodCallExpr.getArguments().get(0) ) );
             }    
             return sb.toString();
         } else if ( name.equals("print") && clas instanceof FieldAccessExpr &&
                 ((FieldAccessExpr)clas).getField().equals("err") ) {
             StringBuilder sb= new StringBuilder();
-            String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+            String s= doConvert( "", methodCallExpr.getArguments().get(0) );
             sb.append(indent).append( "printf, -2, " ).append(s);
             return sb.toString();
         } else if ( name.equals("print") && clas instanceof FieldAccessExpr &&
                 ((FieldAccessExpr)clas).getField().equals("out") ) {
             StringBuilder sb= new StringBuilder();
 
-            if (  methodCallExpr.getArgs().get(0) instanceof StringLiteralExpr ) {
-                String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+            if (  methodCallExpr.getArguments().get(0) instanceof StringLiteralExpr ) {
+                String s= doConvert( "", methodCallExpr.getArguments().get(0) );
                 sb.append(indent).append( "printf, -1, " ).append( s );
             } else {
-                sb.append(indent).append( "printf, -1, " ).append( doConvert( "", methodCallExpr.getArgs().get(0) ) );
+                sb.append(indent).append( "printf, -1, " ).append( doConvert( "", methodCallExpr.getArguments().get(0) ) );
             }    
             return sb.toString();
         } else if ( name.equals("length") && args==null ) {
@@ -1302,18 +1325,18 @@ public class ConvertJavaToIDL {
         } else if ( name.equals("equals") && args.size()==1 ) {
             return indent + doConvert(indent,clas)+" eq "+ utilFormatExprList(args);
         } else if ( name.equals("arraycopy") && clasType.equals("System") ) {
-            String target = doConvert( "", methodCallExpr.getArgs().get(2) );
-            String source = doConvert( "", methodCallExpr.getArgs().get(0) );
-            Expression sourceIdx = methodCallExpr.getArgs().get(1);
-            Expression targetIdx = methodCallExpr.getArgs().get(3);
-            Expression length= methodCallExpr.getArgs().get(4);
+            String target = doConvert( "", methodCallExpr.getArguments().get(2) );
+            String source = doConvert( "", methodCallExpr.getArguments().get(0) );
+            Expression sourceIdx = methodCallExpr.getArguments().get(1);
+            Expression targetIdx = methodCallExpr.getArguments().get(3);
+            Expression length= methodCallExpr.getArguments().get(4);
             String targetIndexs= utilCreateIndexs(targetIdx, length);
             String sourceIndexs= utilCreateIndexs(sourceIdx, length);
             String j= String.format( "%s[%s]=%s[%s]", 
                     target, targetIndexs, source, sourceIndexs ); 
             return indent + j;
         } else if ( name.equals("exit") && clasType.equals("System") ) {
-            return indent + "exit, status="+ doConvert("",methodCallExpr.getArgs().get(0));
+            return indent + "exit, status="+ doConvert("",methodCallExpr.getArguments().get(0));
 
         } else {
             if ( clasType.equals("System") && name.equals("currentTimeMillis") ) {
@@ -1343,7 +1366,7 @@ public class ConvertJavaToIDL {
                     if ( mm==null ) {
                         return indent + m.getName() + "." + name + "("+ utilFormatExprList(args) +")";
                     } else {
-                        boolean isStatic= ModifierSet.isStatic(mm.getModifiers() );
+                        boolean isStatic= isStaticMethod(mm);
                         if ( isStatic ) {
                             if ( mm.getType() instanceof com.github.javaparser.ast.type.VoidType ) {
                                 return indent + javaNameToIdlName( m.getName().toString() ) + "." + javaNameToIdlName( name ) + utilFormatExprList(",",args);
@@ -1669,7 +1692,7 @@ public class ConvertJavaToIDL {
     private String doConvertExpressionStmt(String indent, ExpressionStmt expressionStmt) {
         StringBuilder sb= new StringBuilder();
         if ( expressionStmt.getComment().isPresent() ) {
-            sb.append( utilRewriteComments(indent, expressionStmt.getComment().get() ) );
+            sb.append( utilRewriteComments(indent, expressionStmt.getComment() ) );
         }
         sb.append( doConvert( indent, expressionStmt.getExpression() ) );
         return sb.toString();
@@ -1816,25 +1839,25 @@ public class ConvertJavaToIDL {
         UnaryExpr update1= null;
         if ( update.size()==1 && update.get(0) instanceof UnaryExpr ) {
             update1= (UnaryExpr)update.get(0);
-            if ( !(update1.getOperator()==UnaryExpr.Operator.posIncrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preIncrement 
-                    || update1.getOperator()==UnaryExpr.Operator.posDecrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preDecrement  ) ) {
+            if ( !(update1.getOperator()==UnaryExpr.Operator.POSTFIX_INCREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_INCREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.POSTFIX_DECREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_DECREMENT  ) ) {
                 update1= null;
             }
         }
         boolean initOkay= init1!=null;
         boolean compareOkay= compare!=null 
-                && ( compare.getOperator()==BinaryExpr.Operator.less || compare.getOperator()==BinaryExpr.Operator.lessEquals 
-                || compare.getOperator()==BinaryExpr.Operator.greater || compare.getOperator()==BinaryExpr.Operator.greaterEquals );
+                && ( compare.getOperator()==BinaryExpr.Operator.LESS || compare.getOperator()==BinaryExpr.Operator.LESS_EQUALS 
+                || compare.getOperator()==BinaryExpr.Operator.GREATER || compare.getOperator()==BinaryExpr.Operator.GREATER_EQUALS );
         String compareTo= doConvert("",compare.getRight());
-        if ( compare.getOperator()==BinaryExpr.Operator.less ) {
+        if ( compare.getOperator()==BinaryExpr.Operator.LESS ) {
             if ( compare.getRight() instanceof IntegerLiteralExpr ) {
                 compareTo= String.valueOf(Integer.parseInt(((IntegerLiteralExpr)compare.getRight()).getValue())-1);
             } else {
                 compareTo = compareTo + "-1";
             }
-        } else if ( compare.getOperator()==BinaryExpr.Operator.greater ) {
+        } else if ( compare.getOperator()==BinaryExpr.Operator.GREATER ) {
             if ( compare.getRight() instanceof IntegerLiteralExpr ) {
                 compareTo= String.valueOf(Integer.parseInt(((IntegerLiteralExpr)compare.getRight()).getValue())+1);
             } else {
@@ -1846,7 +1869,7 @@ public class ConvertJavaToIDL {
         
         boolean bodyOkay= false;
         if ( initOkay && compareOkay && updateOkay ) { // check that the loop variable isn't modified within loop
-            bodyOkay= utilCheckNoVariableModification( forStmt.getBody(), v.getName() );
+            bodyOkay= utilCheckNoVariableModification( forStmt.getBody(), v.getName().toString() );
         }
         
         boolean usedWhile= false;
@@ -1857,8 +1880,8 @@ public class ConvertJavaToIDL {
             // TODO: what should we do if the initializer is missing.
             b.append( doConvert("",v.getInitializer().get()) ).append(",");
             b.append( compareTo );
-            if (  update1.getOperator()==UnaryExpr.Operator.posDecrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preDecrement ) {
+            if (  update1.getOperator()==UnaryExpr.Operator.POSTFIX_DECREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_DECREMENT ) {
                 b.append(",-1");
             }
             b.append(" do begin\n");
@@ -1868,7 +1891,9 @@ public class ConvertJavaToIDL {
                     b.append(indent).append( doConvert( "", e ) ).append( "\n" );
                 });
             }
-            b.append( indent ).append("while ").append(doConvert( "", forStmt.getCompare() )).append(" do begin  ; J2J for loop\n");        
+            // forStmt.getCompare().get() will throw an exception if the comparison is missing.
+            // TODO: handle a missing comparison.
+            b.append( indent ).append("while ").append(doConvert( "", forStmt.getCompare().get() )).append(" do begin  ; J2J for loop\n");        
             usedWhile=true;
         }
         if ( forStmt.getBody() instanceof ExpressionStmt ) {
@@ -1890,20 +1915,21 @@ public class ConvertJavaToIDL {
         return b.toString();
     }
 
-    private String doConvertForEachStmt(String indent, ForEachStmt ForEachStmt) {
+    private String doConvertForEachStmt(String indent, ForEachStmt forEachStmt) {
         StringBuilder b= new StringBuilder();
-        if ( ForEachStmt.getVariable().getVars().size()!=1 ) {
+        List<VariableDeclarator> variables = forEachStmt.getVariable().getVariables();
+        if ( variables.size()!=1 ) {
             throw new IllegalArgumentException("expected only one variable in foreach statement");
         }
-        String variableName = ForEachStmt.getVariable().getVars().get(0).getId().getName();
-        Type variableType= ForEachStmt.getVariable().getType();
+        String variableName = variables.get(0).getName().toString();
+        Type variableType= forEachStmt.getVariable().getType();
         localVariablesStack.push( new HashMap<>(localVariablesStack.peek()) );
         localVariablesStack.peek().put( variableName,variableType );
-        b.append( indent ).append("foreach ").append(variableName).append(", ").append(doConvert("",ForEachStmt.getIterable() )).append(" do begin\n");
-        if ( ForEachStmt.getBody() instanceof ExpressionStmt ) {
-            b.append(indent).append(s4).append( doConvert( "", ForEachStmt.getBody() ) ).append("\n");
+        b.append( indent ).append("foreach ").append(variableName).append(", ").append(doConvert("",forEachStmt.getIterable() )).append(" do begin\n");
+        if ( forEachStmt.getBody() instanceof ExpressionStmt ) {
+            b.append(indent).append(s4).append( doConvert( "", forEachStmt.getBody() ) ).append("\n");
         } else {
-            b.append( doConvert( indent, ForEachStmt.getBody() ) );
+            b.append( doConvert( indent, forEachStmt.getBody() ) );
         }
         b.append( indent ).append( "end\n" );
         localVariablesStack.pop( );
@@ -1934,7 +1960,8 @@ public class ConvertJavaToIDL {
 
         StringBuilder sb= new StringBuilder();
         
-        List<Node> nodes= compilationUnit.getChildrenNodes();
+        // TODO: could we use CompilationUnit.getImports() here?
+        List<Node> nodes= compilationUnit.getChildNodes();
         for ( int i=0; i<nodes.size(); i++ ) {
             Node n = nodes.get(i);
             if ( unittest && n instanceof ImportDeclaration ) {
@@ -1946,8 +1973,9 @@ public class ConvertJavaToIDL {
                 }
             }
             if ( n instanceof ImportDeclaration ) {
-                javaImports.put(((ImportDeclaration)n).getName().getName(), false );
-                javaImportDeclarations.put(((ImportDeclaration)n).getName().getName(), (ImportDeclaration)n );
+                String importName = ((ImportDeclaration)n).getName().asString();
+                javaImports.put(importName, false );
+                javaImportDeclarations.put(importName, (ImportDeclaration)n );
             } else {
                 sb.append( doConvert( "", n ) ).append("\n");
             }
@@ -1963,28 +1991,28 @@ public class ConvertJavaToIDL {
     }
 
     private String doConvertReturnStmt(String indent, ReturnStmt returnStmt) {
-        if ( returnStmt.getExpr()==null ) {
+        if ( !returnStmt.getExpression().isPresent() ) {
             return indent + "return";
         } else {
-            return indent + "return, " + doConvert("", returnStmt.getExpr());
+            return indent + "return, " + doConvert("", returnStmt.getExpression().get());
         }
     }
 
     private String doConvertArrayCreationExpr(String indent, ArrayCreationExpr arrayCreationExpr) {
-        if ( arrayCreationExpr.getInitializer()!=null ) {
-            ArrayInitializerExpr ap= arrayCreationExpr.getInitializer();
+        if ( arrayCreationExpr.getInitializer().isPresent()) {
+            ArrayInitializerExpr ap= arrayCreationExpr.getInitializer().get();
             StringBuilder sb= new StringBuilder();
             return "[" + utilFormatExprList( "",ap.getValues() ) + "]";
         } else {
             String item;
-            if ( arrayCreationExpr.getType().equals( Primitive.BYTE ) ||
-                    arrayCreationExpr.getType().equals( Primitive.SHORT ) ||
-                    arrayCreationExpr.getType().equals( Primitive.INT ) ||
-                    arrayCreationExpr.getType().equals( Primitive.LONG ) ) {
+            if ( arrayCreationExpr.getElementType().equals( Primitive.BYTE ) ||
+                    arrayCreationExpr.getElementType().equals( Primitive.SHORT ) ||
+                    arrayCreationExpr.getElementType().equals( Primitive.INT ) ||
+                    arrayCreationExpr.getElementType().equals( Primitive.LONG ) ) {
                 item="0";
-            } else if ( arrayCreationExpr.getType().equals( Primitive.CHAR )) {
+            } else if ( arrayCreationExpr.getElementType().equals( Primitive.CHAR )) {
                 item= "''";
-            } else if ( arrayCreationExpr.getType().toString().equals( "String" ) ) { // TODO: no kludgey 
+            } else if ( arrayCreationExpr.getElementType().toString().equals( "String" ) ) { // TODO: no kludgey 
                 item= "''";
             } else {
                 item= "None";
@@ -2005,9 +2033,10 @@ public class ConvertJavaToIDL {
                 s= the_class_name + "." + s; 
             }
         }
-        
+
+        String fieldName = fieldAccessExpr.getName().asString();
         // test to see if this is an array and "length" of the array is accessed.
-        if ( fieldAccessExpr.getField().equals("length") ) {
+        if ( fieldName.equals("length") ) {
             String inContext= s;
             if ( inContext.startsWith("self.") ) {
                 inContext= inContext.substring(5);
@@ -2021,11 +2050,10 @@ public class ConvertJavaToIDL {
             }
         }
         if ( onlyStatic && s.equals(classNameStack.peek()) ) {
-            return fieldAccessExpr.getField();
+            return fieldName;
         } else {
             if ( s.equals("Collections") ) {
-                String f= fieldAccessExpr.getField();
-                switch (f) {
+                switch (fieldName) {
                     case "EMPTY_MAP":
                         return indent + "HASH()";
                     case "EMPTY_SET":
@@ -2037,11 +2065,11 @@ public class ConvertJavaToIDL {
                 }
             }
             
-            FieldDeclaration field= stackFields.peek().get(fieldAccessExpr.getField());            
-            if ( field!=null && ModifierSet.isStatic(field.getModifiers()) ) {
-                return indent + s + "_" + fieldAccessExpr.getField();
+            FieldDeclaration field= stackFields.peek().get(fieldName);            
+            if (isStaticField(field)) {
+                return indent + s + "_" + fieldName;
             } else {
-                return indent + s + "." + fieldAccessExpr.getField();
+                return indent + s + "." + fieldName;
             }
         }
     }
@@ -2064,30 +2092,30 @@ public class ConvertJavaToIDL {
                 String n= doConvert("",unaryExpr.getExpr());
                 return indent + n + " = " + n + " + 1";
             }
-            case preDecrement: {
+            case PREFIX_DECREMENT: {
                 additionalClasses.put("; J2J: decrement used at line "+unaryExpr.getBeginLine()+", which needs human study.\n",true );
                 String n= doConvert("",unaryExpr.getExpr());
                 return indent + n + " = " + n + " - 1";
             }
-            case posIncrement: {
+            case POSTFIX_INCREMENT: {
                 additionalClasses.put("; J2J: increment used at line "+unaryExpr.getBeginLine()+", which needs human study.\n",true );
                 String n= doConvert("",unaryExpr.getExpr());
                 return indent + n + " = " + n + " + 1";
             }
-            case posDecrement: {
+            case POSTFIX_DECREMENT: {
                 additionalClasses.put("; J2J: decrement used at line "+unaryExpr.getBeginLine()+", which needs human study.\n",true );
                 String n= doConvert("",unaryExpr.getExpr());
                 return indent + n + " = " + n + " - 1";
             }
-            case positive: {
+            case PLUS: {
                 String n= doConvert("",unaryExpr.getExpr());
                 return indent + "+"+n;
             }
-            case negative: {
+            case MINUS: {
                 String n= doConvert("",unaryExpr.getExpr());
                 return indent + "-"+n;
             }
-            case not: {
+            case LOGICAL_COMPLEMENT: {
                 String n= doConvert("",unaryExpr.getExpr());
                 return indent + "not" +"("+n+")" ;
             } 
@@ -2127,7 +2155,7 @@ public class ConvertJavaToIDL {
         pushScopeStack(false);
         getCurrentScope().put( "this", new ClassOrInterfaceType(name) );
         
-        classOrInterfaceDeclaration.getChildrenNodes().forEach((n) -> {
+        classOrInterfaceDeclaration.getChildNodes().forEach((n) -> {
             if ( n instanceof MethodDeclaration ) {
                 classMethods.put( ((MethodDeclaration) n).getName(), classOrInterfaceDeclaration );
                 getCurrentScopeMethods().put(((MethodDeclaration) n).getName(),(MethodDeclaration)n );
@@ -2135,7 +2163,7 @@ public class ConvertJavaToIDL {
         });
             
         if ( onlyStatic ) {
-            classOrInterfaceDeclaration.getChildrenNodes().forEach((n) -> {
+            classOrInterfaceDeclaration.getChildNodes().forEach((n) -> {
                 sb.append( doConvert(indent,n) ).append("\n");
                 sb.append( "\n" );
             });
@@ -2173,11 +2201,11 @@ public class ConvertJavaToIDL {
                 pythonName= name;
             }
             
-            if ( classOrInterfaceDeclaration.getExtends()!=null && classOrInterfaceDeclaration.getExtends().size()==1 ) { 
-                String extendName= doConvert( "", classOrInterfaceDeclaration.getExtends().get(0) );
+            if ( classOrInterfaceDeclaration.getExtendedTypes().size()==1 ) { 
+                String extendName= doConvert( "", classOrInterfaceDeclaration.getExtendedTypes().get(0) );
                 sb.append( indent ).append("class " ).append( pythonName ).append("(" ).append(extendName).append(")").append(":\n");
-            } else if ( classOrInterfaceDeclaration.getImplements()!=null ) { 
-                List<ClassOrInterfaceType> impls= classOrInterfaceDeclaration.getImplements();
+            } else if ( !classOrInterfaceDeclaration.getImplementedTypes().isEmpty() ) {
+                List<ClassOrInterfaceType> impls= classOrInterfaceDeclaration.getImplementedTypes();
                 StringBuilder implementsName= new StringBuilder( doConvert( "", impls.get(0) ) );
                 for ( int i=1; i<impls.size(); i++ ) {
                     implementsName.append(",").append( doConvert( "", impls.get(i) ) );
@@ -2194,7 +2222,7 @@ public class ConvertJavaToIDL {
 
             // check to see if any two methods can be combined.
             // https://github.com/jbfaden/JavaJythonConverter/issues/5
-            classOrInterfaceDeclaration.getChildrenNodes().forEach((n) -> {
+            classOrInterfaceDeclaration.getChildNodes().forEach((n) -> {
                 if ( n instanceof MethodDeclaration ) {
                     classMethods.put( ((MethodDeclaration) n).getName(), classOrInterfaceDeclaration );
                     getCurrentScopeMethods().put(((MethodDeclaration) n).getName(),(MethodDeclaration)n );
@@ -2209,10 +2237,10 @@ public class ConvertJavaToIDL {
             
             // check for unique names
             Map<String,Node> nn= new HashMap<>();
-            for ( Node n: classOrInterfaceDeclaration.getChildrenNodes() ) {
+            for ( Node n: classOrInterfaceDeclaration.getChildNodes() ) {
 
                 if ( n instanceof ClassOrInterfaceType ) {
-                    String name1= ((ClassOrInterfaceType)n).getName();
+                    String name1= ((ClassOrInterfaceType)n).getName().asString();
                     if ( nn.containsKey(name1) ) {
                         sb.append(indent).append("; J2J: Name is used twice in class: ")
                                 .append(pythonName).append(" ").append(name1).append("\n");
@@ -2227,7 +2255,7 @@ public class ConvertJavaToIDL {
                             sb.append(indent).append("; J2J: Name is used twice in class: ")
                                 .append(pythonName).append(" ").append(name1).append("\n");
                         }
-                        getCurrentScope().put( name1, ((FieldDeclaration)n).getType() ); //TODO: Does Python and JavaScript have this?
+                        getCurrentScope().put( name1, (getFieldType((FieldDeclaration)n) )); //TODO: Does Python and JavaScript have this?
                         nn.put( name1, vd );
                     }
                     
@@ -2238,7 +2266,7 @@ public class ConvertJavaToIDL {
                             continue;
                         }
                     }
-                    String name1= md.getName();
+                    String name1= md.getName().asString();
                     if ( nn.containsKey(name1) ) {
                             sb.append(indent).append("; J2J: Name is used twice in class: ")
                                 .append(pythonName).append(" ").append(name1).append("\n");
@@ -2254,26 +2282,26 @@ public class ConvertJavaToIDL {
             
             ConstructorDeclaration constructor= null;
             
-            for ( Node n : classOrInterfaceDeclaration.getChildrenNodes() ) {
+            for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof FieldDeclaration ) {
-                    boolean isStatic= ModifierSet.isStatic(((FieldDeclaration)n).getModifiers() );
+                    boolean isStatic= isStaticField((FieldDeclaration)n);
                     for ( VariableDeclarator vd : ((FieldDeclaration)n).getVariables() ) {
-                        String vname= vd.getId().getName();
+                        String vname= vd.getName().asString();
                         
                         getCurrentScopeFields().put( vname,(FieldDeclaration)n);
                         
                         if ( isStatic ) {
                             commons.append(", ").append(name).append("_").append(vname);
                             commonForStaticVariables= "common "+the_class_name;
-                            if ( vd.getInit()!=null ) {
-                                String v= doConvert("",vd.getInit());
+                            if ( vd.getInitializer().isPresent() ) {
+                                String v= doConvert("",vd.getInitializer().get());
                                 commonsInit.append(indent).append(s4).append(the_class_name).append("_").append(vname).append("=").append(v).append("\n");
                             }
                         } else {
-                            if ( vd.getInit()!=null ) {
-                                structureDefinition.append(",").append(vd.getId().getName()).append(":").append(doConvert("",vd.getInit()));
+                            if ( vd.getInitializer().isPresent() ) {
+                                structureDefinition.append(",").append(vname).append(":").append(doConvert("",vd.getInitializer().get()));
                             } else {
-                                structureDefinition.append(",").append(vd.getId().getName()).append(":ptr_new()");
+                                structureDefinition.append(",").append(vname).append(":ptr_new()");
                             }
                         }
                     }
@@ -2285,7 +2313,7 @@ public class ConvertJavaToIDL {
                 commonForStaticVariables= commonForStaticVariables + commons;
             }
             
-            for ( Node n : classOrInterfaceDeclaration.getChildrenNodes() ) {
+            for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                 sb.append("\n");
                 if ( n instanceof ClassOrInterfaceType ) {
                     // skip this strange node
@@ -2341,7 +2369,7 @@ public class ConvertJavaToIDL {
                 sb.append("; o.runtests                   \n");
                 sb.append("pro ").append(the_class_name).append("::RunTests\n");
                 sb.append("    Test = obj_new(\'").append(classOrInterfaceDeclaration.getName()).append("\')\n");
-                for ( Node n : classOrInterfaceDeclaration.getChildrenNodes() ) {
+                for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                     if ( n instanceof MethodDeclaration 
                             && ((MethodDeclaration)n).getName().startsWith("test") 
                             && ((MethodDeclaration)n).getParameters()==null ) {
@@ -2361,19 +2389,19 @@ public class ConvertJavaToIDL {
     }
 
     private String doConvertMethodDeclaration(String indent, MethodDeclaration methodDeclaration) {
-        boolean isStatic= ModifierSet.isStatic(methodDeclaration.getModifiers() );
+        boolean isStatic= isStaticMethod(methodDeclaration);
         
         if ( onlyStatic && !isStatic ) {
             return "";
         } else if ( isStatic ) {
-            if ( methodDeclaration.getName().equals("main") ) {
+            if ( methodDeclaration.getName().asString().equals("main") ) {
                 hasMain= true;
             }
         }
         
         if ( methodDeclaration.getAnnotations()!=null ) {
             for ( AnnotationExpr a : methodDeclaration.getAnnotations() ) {
-                if ( a.getName().getName().equals("Deprecated") ) {
+                if ( a.getName().asString().equals("Deprecated") ) {
                     return "";
                 }
             }
@@ -2383,7 +2411,7 @@ public class ConvertJavaToIDL {
         String comments= utilRewriteComments( indent, methodDeclaration.getComment() );
         sb.append( comments );
         
-        String methodName= methodDeclaration.getName();        
+        String methodName= methodDeclaration.getName().asString();        
         String idlName;
         if ( camelToSnake ) {
             idlName= camelToSnakeAndRegister(methodName);
@@ -2412,7 +2440,7 @@ public class ConvertJavaToIDL {
 
         if ( methodDeclaration.getParameters()!=null ) {
             for ( Parameter p: methodDeclaration.getParameters() ) { 
-                String name= p.getId().getName();
+                String name= p.getName().asString();
                 String pythonParameterName;
                 if ( camelToSnake ) {
                     pythonParameterName= camelToSnakeAndRegister(name);
@@ -2448,7 +2476,7 @@ public class ConvertJavaToIDL {
     }
     
     private String doConvertFieldDeclaration(String indent, FieldDeclaration fieldDeclaration) {
-        boolean s= ModifierSet.isStatic( fieldDeclaration.getModifiers() ); // TODO: static fields
+        boolean s= isStaticField(fieldDeclaration); // TODO: static fields
         
         if ( onlyStatic && !s ) {
             return "";
@@ -2469,25 +2497,25 @@ public class ConvertJavaToIDL {
                     pythonName= name;
                 }
                 
-                if ( v.getInit()!=null && v.getInit().toString().startsWith("Logger.getLogger") ) {
+                if ( v.getInitializer().isPresent() && v.getInitializer().get().toString().startsWith("Logger.getLogger") ) {
                     getCurrentScope().put( name, JavaParser.parseClassOrInterfaceType( "Logger") );
                     //addLogger();
                     sb.append( indent ).append("; J2J: ").append(fieldDeclaration.toString());
                     continue;
                 }
                 
-                getCurrentScope().put( name,fieldDeclaration.getType() );
+                getCurrentScope().put( name,getFieldType(fieldDeclaration) );
                 getCurrentScopeFields().put( name,fieldDeclaration);
 
-                if ( v.getInit()==null ) {
-                    String implicitDeclaration = utilImplicitDeclaration( fieldDeclaration.getType() );
+                if ( !v.getInitializer().isPresent() ) {
+                    String implicitDeclaration = utilImplicitDeclaration( getFieldType(fieldDeclaration) );
                     if ( implicitDeclaration!=null ) {
                         sb.append( indent ).append( pythonName ).append(" = ").append( implicitDeclaration ).append("\n");
                     } else {
                         sb.append( indent ).append( pythonName ).append(" = ").append( "None  ; J2J added" ).append("\n");
                     }
-                } else if ( v.getInit() instanceof ConditionalExpr ) {
-                    ConditionalExpr ce= (ConditionalExpr)v.getInit();
+                } else if ( v.getInitializer().get() instanceof ConditionalExpr ) {
+                    ConditionalExpr ce= (ConditionalExpr)v.getInitializer().get();
                     sb.append( indent ).append("if ").append(doConvert( "",ce.getCondition() )).append(":\n");
                     sb.append( indent ).append(s4).append(pythonName).append(" = ").append( doConvert( "",ce.getThenExpr() ) ).append("\n");
                     sb.append( indent ).append( "else:\n");
@@ -2504,7 +2532,7 @@ public class ConvertJavaToIDL {
     private String doConvertThrowStmt(String indent, ThrowStmt throwStmt) {
         Expression msg= throwStmt.getExpr();
         if ( throwStmt.getExpr() instanceof ObjectCreationExpr ) {
-            List<Expression> args= ((ObjectCreationExpr)throwStmt.getExpr()).getArgs();
+            List<Expression> args= ((ObjectCreationExpr)throwStmt.getExpr()).getArguments();
             if ( args.size()==1 ) {
                 msg= args.get(0);
             }
@@ -2551,11 +2579,9 @@ public class ConvertJavaToIDL {
                 b.append( nextIndent ).append( "").append( slabel ).append(": BEGIN\n");
             }
             
-            if ( ses.getStmts()!=null ) {
-                for ( Statement s : ses.getStmts() ) {
-                    b.append( doConvert( nextNextIndent,s) );
-                    b.append( "\n" );
-                }
+            for ( Statement s : ses.getStatements() ) {
+                b.append( doConvert( nextNextIndent,s) );
+                b.append( "\n" );
             }
             b.append( nextIndent ).append("END\n");
         }
@@ -2563,8 +2589,11 @@ public class ConvertJavaToIDL {
         return b.toString();
     }
 
-    private static String utilRewriteComments(String indent, Comment comments) {
-        if ( comments==null ) return "";
+    private static String utilRewriteComments(String indent, Option<Comment> commentsOption) {
+        if (!commentsOption.isPresent()) {
+            return "";
+        }
+        Comment comments = commentsOption.get();
         StringBuilder b= new StringBuilder();
         String[] ss= comments.getContent().split("\n");
         if ( ss[0].trim().length()==0 ) {
@@ -2645,9 +2674,9 @@ public class ConvertJavaToIDL {
     
     private String doConvertObjectCreationExpr(String indent, ObjectCreationExpr objectCreationExpr) {
         if ( objectCreationExpr.getType().toString().equals("StringBuilder") ) {
-            if ( objectCreationExpr.getArgs()!=null ) {
-                if ( objectCreationExpr.getArgs().size()==1 ) {
-                    Expression e= objectCreationExpr.getArgs().get(0);
+            if ( objectCreationExpr.getArguments()!=null ) {
+                if ( objectCreationExpr.getArguments().size()==1 ) {
+                    Expression e= objectCreationExpr.getArguments().get(0);
                     if ( Primitive.INT.equals(guessType(e)) ) { // new StringBuilder(100);
                         return "\"\"";
                     } else {
@@ -2660,20 +2689,20 @@ public class ConvertJavaToIDL {
                 return indent + "\"\"";
             }
         } else if ( objectCreationExpr.getType().toString().endsWith("Exception") ) {
-            if ( objectCreationExpr.getArgs()==null ) {
+            if ( objectCreationExpr.getArguments()==null ) {
                 return indent + "Exception()";
             } else {
-                return indent + "Exception("+ doConvert("",objectCreationExpr.getArgs().get(0))+")";
+                return indent + "Exception("+ doConvert("",objectCreationExpr.getArguments().get(0))+")";
             }
         } else {
             String qualifiedName= utilQualifyClassName(objectCreationExpr.getType());
             if ( qualifiedName!=null ) {
-                return indent + qualifiedName + "("+ utilFormatExprList(objectCreationExpr.getArgs())+ ")";
+                return indent + qualifiedName + "("+ utilFormatExprList(objectCreationExpr.getArguments())+ ")";
             } else {
                 if ( objectCreationExpr.getAnonymousClassBody()!=null ) {
                     StringBuilder sb= new StringBuilder();
                     String body= doConvert( indent, objectCreationExpr.getAnonymousClassBody().get(0) );
-                    sb.append(indent).append(objectCreationExpr.getType()).append("(").append(utilFormatExprList(objectCreationExpr.getArgs())).append(")"); 
+                    sb.append(indent).append(objectCreationExpr.getType()).append("(").append(utilFormatExprList(objectCreationExpr.getArguments())).append(")"); 
                     sb.append("*** ; J2J: This is extended in an anonymous inner class ***");
                     return sb.toString();
                 } else {
@@ -2688,8 +2717,8 @@ public class ConvertJavaToIDL {
                             javaImports.put( objectCreationExpr.getType().getName(), true );
                         }
                         if ( objectCreationExpr.getType().getName().equals("String") ) {
-                            if ( objectCreationExpr.getArgs().size()==1 ) {
-                                Expression e= objectCreationExpr.getArgs().get(0);
+                            if ( objectCreationExpr.getArguments().size()==1 ) {
+                                Expression e= objectCreationExpr.getArguments().get(0);
                                 Type t= guessType(e);
                                 if ( t instanceof ReferenceType 
                                         && t.equals(ArrayType(Primitive.CHAR,1) ) ) {
@@ -2700,7 +2729,7 @@ public class ConvertJavaToIDL {
                                 System.err.println("here "+t);
                             }
                         }
-                        return indent + objectCreationExpr.getType() + "("+ utilFormatExprList(objectCreationExpr.getArgs())+ ")";
+                        return indent + objectCreationExpr.getType() + "("+ utilFormatExprList(objectCreationExpr.getArguments())+ ")";
                     }
                 }
             }
@@ -2988,7 +3017,7 @@ public class ConvertJavaToIDL {
             builder.append(indent).append("class ").append(enumDeclaration.getName()).append(":\n");
             List<EnumConstantDeclaration> ll = enumDeclaration.getEntries();
             
-            for ( Node n: enumDeclaration.getChildrenNodes() ) {
+            for ( Node n: enumDeclaration.getChildNodes() ) {
                 if ( n instanceof ConstructorDeclaration ) {
                     String params= utilFormatParameterList( ((ConstructorDeclaration)n).getParameters() );
                     builder.append(indent).append(s4 + "def compare( self, o1, o2 ):\n");
@@ -2997,14 +3026,14 @@ public class ConvertJavaToIDL {
             }
 
             for ( EnumConstantDeclaration l : ll ) {
-                String args = utilFormatExprList(l.getArgs()); 
+                String args = utilFormatExprList(l.getArguments()); 
                 args= "";// we drop the args
-                //TODO find anonymous extension  l.getArgs().get(0).getChildrenNodes()
+                //TODO find anonymous extension  l.getArguments().get(0).getChildNodes()
                 builder.append(indent).append(enumDeclaration.getName()).append(".").append(l.getName()).append(" = ")
                         .append(enumDeclaration.getName()).append("(").append(args).append(")") .append("\n");
                 String methodName=null;
-                if ( l.getArgs().get(0).getChildrenNodes()!=null ) {
-                    for ( Node n: l.getArgs().get(0).getChildrenNodes() ) {
+                if ( l.getArguments().get(0).getChildNodes()!=null ) {
+                    for ( Node n: l.getArguments().get(0).getChildNodes() ) {
                         if ( n instanceof MethodDeclaration ) {
                             methodName= ((MethodDeclaration)n).getName();
                             builder.append( doConvert( indent, n ) );
@@ -3063,7 +3092,7 @@ public class ConvertJavaToIDL {
             return indent + javaNameToIdlName(s);
         } else if ( getCurrentScopeFields().containsKey(s) ) {
             FieldDeclaration ss= getCurrentScopeFields().get(s);
-            boolean isStatic= ModifierSet.isStatic( ss.getModifiers() );
+            boolean isStatic= isStaticField(ss);
             if ( isStatic ) {
                 scope = javaNameToIdlName( theClassName ); 
                 return indent + scope + (scope.length()==0 ? "" : "_") + javaNameToIdlName(s);
@@ -3115,7 +3144,7 @@ public class ConvertJavaToIDL {
     }
 
     private boolean utilCheckNoVariableModification(Statement body, String name ) {
-        for ( Node n: body.getChildrenNodes() ) {
+        for ( Node n: body.getChildNodes() ) {
             if ( n instanceof BlockStmt ) {
                 return utilCheckNoVariableModification((BlockStmt)n, name );
             } else if ( n instanceof ExpressionStmt ) {

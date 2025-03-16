@@ -467,7 +467,7 @@ public class ConvertJavaToJavascript {
 
         StringBuilder sb= new StringBuilder();
         
-        List<Node> nodes= compilationUnit.getChildrenNodes();
+        List<Node> nodes= compilationUnit.getChildNodes();
         for ( int i=0; i<nodes.size(); i++ ) {
             Node n = nodes.get(i);
             if ( unittest && n instanceof ImportDeclaration ) {
@@ -784,7 +784,7 @@ public class ConvertJavaToJavascript {
         getCurrentScope().put( "this", new ClassOrInterfaceType(name) );
         
         if ( onlyStatic ) {
-            classOrInterfaceDeclaration.getChildrenNodes().forEach((n) -> {
+            classOrInterfaceDeclaration.getChildNodes().forEach((n) -> {
                 sb.append( doConvert(indent,n) ).append("\n");
             });
         } else {
@@ -833,7 +833,7 @@ public class ConvertJavaToJavascript {
 
             // check to see if any two methods can be combined.
             // https://github.com/jbfaden/JavaJythonConverter/issues/5
-            classOrInterfaceDeclaration.getChildrenNodes().forEach((n) -> {
+            classOrInterfaceDeclaration.getChildNodes().forEach((n) -> {
                 if ( n instanceof MethodDeclaration ) {
                     classMethods.put( ((MethodDeclaration) n).getName(), classOrInterfaceDeclaration );
                     getCurrentScopeMethods().put(((MethodDeclaration) n).getName(),(MethodDeclaration)n );
@@ -845,7 +845,7 @@ public class ConvertJavaToJavascript {
             
             // check for unique names
             Map<String,Node> nn= new HashMap<>();
-            for ( Node n: classOrInterfaceDeclaration.getChildrenNodes() ) {
+            for ( Node n: classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof ClassOrInterfaceType ) {
                     String name1= ((ClassOrInterfaceType)n).getName();
                     if ( nn.containsKey(name1) ) {
@@ -880,7 +880,7 @@ public class ConvertJavaToJavascript {
                 }
             }
             
-            for ( Node n : classOrInterfaceDeclaration.getChildrenNodes() ) {
+            for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof ClassOrInterfaceType ) {
                     // skip this strange node
                 } else if ( n instanceof EmptyMemberDeclaration ) {
@@ -907,7 +907,7 @@ public class ConvertJavaToJavascript {
             if ( unittest ) {
                 sb.append( indent ).append( "}" ).append("\n");
                 sb.append("test = new ").append(classOrInterfaceDeclaration.getName()).append("();\n");
-                for ( Node n : classOrInterfaceDeclaration.getChildrenNodes() ) {
+                for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                     if ( n instanceof MethodDeclaration 
                             && ((MethodDeclaration)n).getName().startsWith("test") 
                             && ((MethodDeclaration)n).getParameters()==null ) {
@@ -1346,13 +1346,13 @@ public class ConvertJavaToJavascript {
                 } else if ( scopeType.toString().equals("Arrays") ) {
                     switch ( mce.getName() ) {
                         case "copyOfRange":
-                            return guessType( mce.getArgs().get(0) );
+                            return guessType( mce.getArguments().get(0) );
                     }
                 }
             }
             switch ( mce.getName() ) { // TODO: consider t
                 case "charAt": return ASTHelper.CHAR_TYPE;
-                case "copyOfRange": return guessType( mce.getArgs().get(0) );
+                case "copyOfRange": return guessType( mce.getArguments().get(0) );
             }
         }
         return null;
@@ -1385,7 +1385,7 @@ public class ConvertJavaToJavascript {
             MethodCallExpr mce= (MethodCallExpr)b.getLeft();
             if ( mce.getName().equals("compareTo") 
                     && ((IntegerLiteralExpr)b.getRight()).toString().equals("0") ) {
-                Expression a0= mce.getArgs().get(0);
+                Expression a0= mce.getArguments().get(0);
                 if ( null!=b.getOperator() ) switch (b.getOperator()) {
                     case greater:
                         return doConvert("",mce.getScope()) + " > " + doConvert("",a0);
@@ -1616,7 +1616,7 @@ public class ConvertJavaToJavascript {
     private String doConvertMethodCallExpr(String indent, MethodCallExpr methodCallExpr) {
         Expression clas= methodCallExpr.getScope();
         String name= methodCallExpr.getName();
-        List<Expression> args= methodCallExpr.getArgs();
+        List<Expression> args= methodCallExpr.getArguments();
             
         if ( name==null ) {
             name=""; // I don't think this happens
@@ -2119,9 +2119,9 @@ public class ConvertJavaToJavascript {
 
     private String doConvertObjectCreationExpr(String indent, ObjectCreationExpr objectCreationExpr) {
         if ( objectCreationExpr.getType().toString().equals("StringBuilder") ) {
-            if ( objectCreationExpr.getArgs()!=null ) {
-                if ( objectCreationExpr.getArgs().size()==1 ) {
-                    Expression e= objectCreationExpr.getArgs().get(0);
+            if ( objectCreationExpr.getArguments()!=null ) {
+                if ( objectCreationExpr.getArguments().size()==1 ) {
+                    Expression e= objectCreationExpr.getArguments().get(0);
                     if ( ASTHelper.INT_TYPE.equals(guessType(e)) ) { // new StringBuilder(100);
                         return "\"\"";
                     } else {
@@ -2134,20 +2134,20 @@ public class ConvertJavaToJavascript {
                 return indent + "\"\"";
             }
         } else if ( objectCreationExpr.getType().toString().endsWith("Exception") ) {
-            if ( objectCreationExpr.getArgs()==null ) {
+            if ( objectCreationExpr.getArguments()==null ) {
                 return indent + "\"Error\"";
             } else {
-                return indent + doConvert("",objectCreationExpr.getArgs().get(0));
+                return indent + doConvert("",objectCreationExpr.getArguments().get(0));
             }
         } else {
             String qualifiedName= null; // TODO: leftover from Python converter
             if ( qualifiedName!=null ) {
-                return indent + "new " + qualifiedName + "("+ utilFormatExprList(objectCreationExpr.getArgs())+ ")";
+                return indent + "new " + qualifiedName + "("+ utilFormatExprList(objectCreationExpr.getArguments())+ ")";
             } else {
                 if ( objectCreationExpr.getAnonymousClassBody()!=null ) {
                     StringBuilder sb= new StringBuilder();
                     String body= doConvert( indent, objectCreationExpr.getAnonymousClassBody().get(0) );
-                    sb.append(indent).append(objectCreationExpr.getType()).append("(").append(utilFormatExprList(objectCreationExpr.getArgs())).append(")"); 
+                    sb.append(indent).append(objectCreationExpr.getType()).append("(").append(utilFormatExprList(objectCreationExpr.getArguments())).append(")"); 
                     sb.append("*** // J2J: This is extended in an anonymous inner class ***");
                     return sb.toString();
                 } else {
@@ -2162,8 +2162,8 @@ public class ConvertJavaToJavascript {
                             javaImports.put( objectCreationExpr.getType().getName(), true );
                         }
                         if ( objectCreationExpr.getType().getName().equals("String") ) {
-                            if ( objectCreationExpr.getArgs().size()==1 ) {
-                                Expression e= objectCreationExpr.getArgs().get(0);
+                            if ( objectCreationExpr.getArguments().size()==1 ) {
+                                Expression e= objectCreationExpr.getArguments().get(0);
                                 Type t= guessType(e);
                                 if ( t instanceof ReferenceType 
                                         && t.equals(ASTHelper.createReferenceType(ASTHelper.CHAR_TYPE,1) ) ) {
@@ -2173,7 +2173,7 @@ public class ConvertJavaToJavascript {
                                 }
                             }
                         }
-                        return indent + "new " + objectCreationExpr.getType().getName() + "("+ utilFormatExprList(objectCreationExpr.getArgs()) + ")"; 
+                        return indent + "new " + objectCreationExpr.getType().getName() + "("+ utilFormatExprList(objectCreationExpr.getArguments()) + ")"; 
                     }
                 }
             }
@@ -2438,7 +2438,7 @@ public class ConvertJavaToJavascript {
             builder.append(indent).append("class ").append(enumDeclaration.getName()).append(" {\n");
             List<EnumConstantDeclaration> ll = enumDeclaration.getEntries();
             
-            for ( Node n: enumDeclaration.getChildrenNodes() ) {
+            for ( Node n: enumDeclaration.getChildNodes() ) {
                 if ( n instanceof ConstructorDeclaration ) {
                     String params= utilFormatParameterList( ((ConstructorDeclaration)n).getParameters() );
                     builder.append(indent).append(s4 + "compare( o1, o2 ) {\n");
@@ -2448,13 +2448,13 @@ public class ConvertJavaToJavascript {
             }
 
             for ( EnumConstantDeclaration l : ll ) {
-                String args = utilFormatExprList(l.getArgs()); 
+                String args = utilFormatExprList(l.getArguments()); 
                 args= "";// we drop the args
                 builder.append(indent).append(s4).append("static ").append(l.getName()).append(" = new ")
                         .append(enumDeclaration.getName()).append("(").append(args).append(")") .append(";\n");
                 String methodName=null;
-                if ( l.getArgs()!=null && l.getArgs().get(0).getChildrenNodes()!=null ) {
-                    for ( Node n: l.getArgs().get(0).getChildrenNodes() ) {
+                if ( l.getArguments()!=null && l.getArguments().get(0).getChildNodes()!=null ) {
+                    for ( Node n: l.getArguments().get(0).getChildNodes() ) {
                         if ( n instanceof MethodDeclaration ) {
                             methodName= ((MethodDeclaration)n).getName();
                             builder.append( doConvert( indent, n ) );
