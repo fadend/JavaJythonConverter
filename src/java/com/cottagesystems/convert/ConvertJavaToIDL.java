@@ -4,7 +4,7 @@ package com.cottagesystems.convert;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseProblemException;
 import com.github.javaparser.ParseResult;
-import com.github.javaParser.parseException;
+import com.github.javaparser.ParseException;
 import com.github.javaparser.Position;
 import com.github.javaparser.Range;
 import com.github.javaparser.ast.CompilationUnit;
@@ -75,7 +75,6 @@ import com.github.javaparser.ast.type.PrimitiveType;
 import com.github.javaparser.ast.type.PrimitiveType.Primitive;
 import com.github.javaparser.ast.type.ReferenceType;
 import com.github.javaparser.ast.type.ArrayType;
-import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
@@ -106,7 +105,9 @@ import java.util.stream.Collectors;
 public class ConvertJavaToIDL {
 
     public static final String VERSION = "20240217b";
-    
+
+    private JavaParser javaParser = new JavaParser();
+
     public ConvertJavaToIDL() {
         this.stack = new Stack<>();
         this.stackFields= new Stack<>();
@@ -119,7 +120,6 @@ public class ConvertJavaToIDL {
         this.stackMethods.push( new HashMap<>() );
         this.stackClasses.push( new HashMap<>() );
         this.localVariablesStack.push( new HashMap<>() );
-        this.javaParser = new JavaParser();
     }
     
     /**
@@ -155,7 +155,7 @@ public class ConvertJavaToIDL {
         return variables.get(0).getType();
     }
 
-    private static <T> T extractParseResult(ParseRessult<T> result) {
+    private static <T> T extractParseResult(ParseResult<T> result) {
         if (result.isSuccessful()) {
             return result.getResult().get();
         }
@@ -219,7 +219,7 @@ public class ConvertJavaToIDL {
     // Constants
     private static final ReferenceType STRING_TYPE = new ClassOrInterfaceType("String");
     
-    private static final AnnotationExpr DEPRECATED = new MarkerAnnotationExpr( new NameExpr("Deprecated") );
+    private static final AnnotationExpr DEPRECATED = new MarkerAnnotationExpr("Deprecated");
     
     /*** internal parsing state ***/
     
@@ -399,9 +399,8 @@ public class ConvertJavaToIDL {
      * lines of code are to be wrapped to make a method.
      * @param javasrc
      * @return
-     * @throws ParseException 
      */
-    public String utilMakeClass( String javasrc ) throws ParseException {
+    public String utilMakeClass( String javasrc ) {
         javasrc= javasrc.trim();
         int ibrace;
         int i= javasrc.indexOf("\n");
@@ -506,7 +505,7 @@ public class ConvertJavaToIDL {
                 numLinesIn= lines.length;
                         
                 int offset=0;
-                Expression parseExpression = javaParser.parseExpression(javasrc);
+                Expression parseExpression = extractParseResult(javaParser.parseExpression(javasrc));
                 StringBuilder bb= new StringBuilder( doConvert( "", parseExpression ) );
                 int linesHandled=0;
                 while ( (linesHandled+parseExpression.getEndLine())<lines.length ) {
@@ -521,7 +520,7 @@ public class ConvertJavaToIDL {
                         break;
                     }
                     linesHandled+= additionalLinesHandled;
-                    parseExpression = javaParser.parseExpression(javasrc.substring(offset));
+                    parseExpression = extractParseResult(javaParser.parseExpression(javasrc.substring(offset)));
                     bb.append( "\n" ).append( doConvert( "", parseExpression ) );
                 }
                 String src= bb.toString();
@@ -549,7 +548,7 @@ public class ConvertJavaToIDL {
         
         try {
             if ( numLinesIn < 2 ) {
-                Statement parsed = javaParser.parseStatement(javasrc);
+                Statement parsed = extractParseResult(javaParser.parseStatement(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex2) {
@@ -558,14 +557,14 @@ public class ConvertJavaToIDL {
 
         try {
             if ( numLinesIn < 2 ) {
-                BodyDeclaration parsed = javaParser.parseBodyDeclaration(javasrc);
+                BodyDeclaration parsed = extractParseResult(javaParser.parseBodyDeclaration(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex3 ) {
             throwMe= ex3;
         }
         try {
-            Statement parsed = javaParser.parseBlock(javasrc);
+            Statement parsed = extractParseResult(javaParser.parseBlock(javasrc));
             return doConvert("", parsed);
         } catch ( ParseException ex ) {
             throwMe =ex;
@@ -710,7 +709,7 @@ public class ConvertJavaToIDL {
         if ( clas instanceof NameExpr ) {
             String clasName= ((NameExpr)clas).getName().toString();
             if ( Character.isUpperCase(clasName.charAt(0)) ) { // Yup, we're assuming that upper case refers to a class
-                return javaParser.parseClassOrInterfaceType( clasName.toString());
+                return new ClassOrInterfaceType( clasName.toString());
             } else if ( localVariablesStack.peek().containsKey(clasName) ) {
                 return localVariablesStack.peek().get(clasName);
             } else if ( getCurrentScope().containsKey(clasName) ) {
@@ -1222,8 +1221,9 @@ public class ConvertJavaToIDL {
                     StringBuilder sb= new StringBuilder();
                     Type t1= guessType(args.get(0)); // are both arrays containing primative objects (int,float,etc)
                     Type t2= guessType(args.get(1));
-                    if ( t1!=null && t1.equals(ArrayType(Primitive.INT,1)) 
-                            && t2!=null && t2.equals(ArrayType(Primitive.INT,1)) ) {
+                    ArrayType intArrayType = new ArrayType(new PrimitiveType(Primitive.INT));
+                    if ( t1!=null && t1.equals(intArrayType) 
+                            && t2!=null && t2.equals(intArrayType) ) {
                         sb.append(indent).append(doConvert("",args.get(0))).append(" eq ");
                         sb.append(doConvert("",args.get(1)));
                         return sb.toString();        
@@ -1721,7 +1721,7 @@ public class ConvertJavaToIDL {
             Expression initializer = v.getInitializer().orElse(null);
             if ( initializer!=null && initializer.toString().startsWith("Logger.getLogger") ) {
                 //addLogger();
-                localVariablesStack.peek().put(s,javaParser.parseClassOrInterfaceType( "Logger") );
+                localVariablesStack.peek().put(s,new ClassOrInterfaceType("Logger") );
                 return indent + "; J2J: "+variableDeclarationExpr.toString().trim();
             }
             if ( camelToSnake ) {
@@ -1847,7 +1847,7 @@ public class ConvertJavaToIDL {
                 v= variables.get(0);
             }
         }
-        BinaryExpr compare= forStmt.getCompare() instanceof BinaryExpr ? ((BinaryExpr)forStmt.getCompare()) : null;
+        BinaryExpr compare= (forStmt.getCompare().isPresent() && forStmt.getCompare().get() instanceof BinaryExpr) ? ((BinaryExpr)forStmt.getCompare().get()) : null;
         List<Expression> update= forStmt.getUpdate();
         UnaryExpr update1= null;
         if ( update.size()==1 && update.get(0) instanceof UnaryExpr ) {
@@ -2626,7 +2626,7 @@ public class ConvertJavaToIDL {
         return b.toString();
     }
 
-    private static String utilRewriteComments(String indent, Option<Comment> commentsOption) {
+    private static String utilRewriteComments(String indent, Optional<Comment> commentsOption) {
         if (!commentsOption.isPresent()) {
             return "";
         }
@@ -2698,7 +2698,7 @@ public class ConvertJavaToIDL {
     }
 
     private String doConvertClassOrInterfaceType(String indent, ClassOrInterfaceType classOrInterfaceType) {
-        return indent + classOrInterfaceType.getName();
+        return indent + classOrInterfaceType.getName().asString();
     }
 
     private String utilQualifyClassName( ClassOrInterfaceType clas ) {
