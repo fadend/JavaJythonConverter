@@ -1,7 +1,8 @@
 
 package com.cottagesystems.convert;
 
-import com.github.javaparser.ASTHelper;
+import com.cottagesystems.convert.ConversionUtils;
+import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseException;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
@@ -9,14 +10,11 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
-import com.github.javaparser.ast.body.EmptyMemberDeclaration;
 import com.github.javaparser.ast.body.EnumConstantDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.InitializerDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.ModifierSet;
-import com.github.javaparser.ast.body.MultiTypeParameter;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AssignExpr;
@@ -31,7 +29,6 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.body.VariableDeclaratorId;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.ArrayAccessExpr;
@@ -40,6 +37,7 @@ import com.github.javaparser.ast.expr.ArrayInitializerExpr;
 import com.github.javaparser.ast.expr.AssignExpr.Operator;
 import com.github.javaparser.ast.expr.BooleanLiteralExpr;
 import com.github.javaparser.ast.expr.CastExpr;
+import com.github.javaparser.ast.expr.Name;
 import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.expr.CharLiteralExpr;
 import com.github.javaparser.ast.expr.ConditionalExpr;
@@ -50,23 +48,24 @@ import com.github.javaparser.ast.expr.LongLiteralExpr;
 import com.github.javaparser.ast.expr.MarkerAnnotationExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
-import com.github.javaparser.ast.expr.QualifiedNameExpr;
 import com.github.javaparser.ast.expr.SuperExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.stmt.BreakStmt;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.EmptyStmt;
 import com.github.javaparser.ast.stmt.ForStmt;
-import com.github.javaparser.ast.stmt.ForeachStmt;
+import com.github.javaparser.ast.stmt.ForEachStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
-import com.github.javaparser.ast.stmt.SwitchEntryStmt;
+import com.github.javaparser.ast.stmt.SwitchEntry;
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.stmt.TryStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
+import com.github.javaparser.ast.type.ArrayType;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.PrimitiveType;
+import com.github.javaparser.ast.type.PrimitiveType.Primitive;
 import com.github.javaparser.ast.type.ReferenceType;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -83,6 +82,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Map.Entry;
 import java.util.Stack;
 import java.util.stream.Collectors;
@@ -111,7 +111,9 @@ public class ConvertJavaToPython {
         this.stackClasses.push( new HashMap<>() );
         this.localVariablesStack.push( new HashMap<>() );
     }
-    
+
+    private JavaParser javaParser = new JavaParser();
+
     /**
      * the indent level.
      */
@@ -189,9 +191,9 @@ public class ConvertJavaToPython {
     private boolean hasMain= false;
     
     // Constants
-    private static final ReferenceType STRING_TYPE = ASTHelper.createReferenceType( "String", 0 );
+    private static final ReferenceType STRING_TYPE = new ClassOrInterfaceType( "String");
     
-    private static final AnnotationExpr DEPRECATED = new MarkerAnnotationExpr( new NameExpr("Deprecated") );
+    private static final AnnotationExpr DEPRECATED = new MarkerAnnotationExpr("Deprecated");
     
     /*** internal parsing state ***/
     
@@ -391,7 +393,7 @@ public class ConvertJavaToPython {
         ParseException throwMe;
         try {
             ByteArrayInputStream ins= new ByteArrayInputStream( javasrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
+            CompilationUnit unit= ConversionUtils.extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
             String src= doConvert( "", unit );
             if ( additionalImports!=null ) {
                 StringBuilder sb= new StringBuilder();
@@ -459,12 +461,12 @@ public class ConvertJavaToPython {
                 numLinesIn= lines.length;
                         
                 int offset=0;
-                Expression parseExpression = com.github.javaparser.JavaParser.parseExpression(javasrc);
+                Expression parseExpression = ConversionUtils.extractParseResult(javaParser.parseExpression(javasrc));
                 StringBuilder bb= new StringBuilder( doConvert( "", parseExpression ) );
                 int linesHandled=0;
-                while ( (linesHandled+parseExpression.getEndLine())<lines.length ) {
+                while ( (linesHandled+ConversionUtils.getEndLine(parseExpression))<lines.length ) {
                     int additionalLinesHandled=0;
-                    for ( int i=0; i<parseExpression.getEndLine(); i++ ) {
+                    for ( int i=0; i<ConversionUtils.getEndLine(parseExpression); i++ ) {
                         offset += lines[i].length() ;
                         offset += 1;
                         additionalLinesHandled++;
@@ -474,7 +476,7 @@ public class ConvertJavaToPython {
                         break;
                     }
                     linesHandled+= additionalLinesHandled;
-                    parseExpression = com.github.javaparser.JavaParser.parseExpression(javasrc.substring(offset));
+                    parseExpression = ConversionUtils.extractParseResult(javaParser.parseExpression(javasrc.substring(offset)));
                     bb.append( "\n" ).append( doConvert( "", parseExpression ) );
                 }
                 String src= bb.toString();
@@ -502,7 +504,7 @@ public class ConvertJavaToPython {
         
         try {
             if ( numLinesIn < 2 ) {
-                Statement parsed = com.github.javaparser.JavaParser.parseStatement(javasrc);
+                Statement parsed = ConversionUtils.extractParseResult(javaParser.parseStatement(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex2) {
@@ -511,14 +513,14 @@ public class ConvertJavaToPython {
 
         try {
             if ( numLinesIn < 2 ) {
-                BodyDeclaration parsed = com.github.javaparser.JavaParser.parseBodyDeclaration(javasrc);
+                BodyDeclaration parsed = ConversionUtils.extractParseResult(javaParser.parseBodyDeclaration(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex3 ) {
             throwMe= ex3;
         }
         try {
-            Statement parsed = com.github.javaparser.JavaParser.parseBlock(javasrc);
+            Statement parsed = ConversionUtils.extractParseResult(javaParser.parseBlock(javasrc));
             return doConvert("", parsed);
         } catch ( ParseException ex ) {
             throwMe =ex;
@@ -527,7 +529,7 @@ public class ConvertJavaToPython {
         try {
             String ssrc= utilMakeClass(javasrc);
             ByteArrayInputStream ins= new ByteArrayInputStream( ssrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
+            CompilationUnit unit= ConversionUtils.extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
             String src= doConvert( "", unit );
             src= utilUnMakeClass(src);
             
@@ -565,87 +567,92 @@ public class ConvertJavaToPython {
         
         if ( b.getLeft() instanceof MethodCallExpr && b.getRight() instanceof IntegerLiteralExpr ) {
             MethodCallExpr mce= (MethodCallExpr)b.getLeft();
-            if ( mce.getName().equals("compareTo") 
+            if ( mce.getName().asString().equals("compareTo") 
                     && ((IntegerLiteralExpr)b.getRight()).toString().equals("0") ) {
-                if ( null!=b.getOperator() ) switch (b.getOperator()) {
-                    case greater:
-                        return doConvert("",mce.getScope()) + " > " + doConvert("",mce.getArgs().get(0));
-                    case greaterEquals:
-                        return doConvert("",mce.getScope()) + " >= " + doConvert("",mce.getArgs().get(0));
-                    case less:
-                        return doConvert("",mce.getScope()) + " < " + doConvert("",mce.getArgs().get(0));
-                    case lessEquals:
-                        return doConvert("",mce.getScope()) + " <= " + doConvert("",mce.getArgs().get(0));
-                    case equals:                    
-                        return doConvert("",mce.getScope()) + " == " + doConvert("",mce.getArgs().get(0));
-                    default:
-                        break;
+                if ( null!=b.getOperator() ) {
+                    // TODO: Should we avoid dying when scope isn't available?
+                    // TODO: avoid repeated code below.
+                    Expression scope = mce.getScope().get();
+                    switch (b.getOperator()) {
+                        case GREATER:
+                            return doConvert("",mce.getScope().get()) + " > " + doConvert("",mce.getArguments().get(0));
+                        case GREATER_EQUALS:
+                            return doConvert("",mce.getScope().get()) + " >= " + doConvert("",mce.getArguments().get(0));
+                        case LESS:
+                            return doConvert("",mce.getScope().get()) + " < " + doConvert("",mce.getArguments().get(0));
+                        case LESS_EQUALS:
+                            return doConvert("",mce.getScope().get()) + " <= " + doConvert("",mce.getArguments().get(0));
+                        case EQUALS:                    
+                            return doConvert("",mce.getScope().get()) + " == " + doConvert("",mce.getArguments().get(0));
+                        default:
+                            break;
+                    }
                 }
             }
         }
         BinaryExpr.Operator op= b.getOperator();
-        if (  rightType!=null && rightType.equals(ASTHelper.CHAR_TYPE) && left.startsWith("ord(") && left.endsWith(")") ) {
+        if (  rightType!=null && rightType.equals(new PrimitiveType(Primitive.CHAR)) && left.startsWith("ord(") && left.endsWith(")") ) {
             left= left.substring(4,left.length()-1);
         }
         
         if ( leftType!=null && rightType!=null ) {
-            if ( leftType.equals(ASTHelper.CHAR_TYPE) && rightType.equals(ASTHelper.INT_TYPE) ) {
+            if ( leftType.equals(new PrimitiveType(Primitive.CHAR)) && rightType.equals(new PrimitiveType(Primitive.INT)) ) {
                 left= "ord("+left+")";
             }
-            if ( leftType.equals(ASTHelper.INT_TYPE) && rightType.equals(ASTHelper.CHAR_TYPE) ) {
+            if ( leftType.equals(new PrimitiveType(Primitive.INT)) && rightType.equals(new PrimitiveType(Primitive.CHAR)) ) {
                 left= "ord("+left+")";
             }
             if ( rightType.equals(STRING_TYPE) 
                     && leftType instanceof PrimitiveType 
-                    && !leftType.equals(ASTHelper.CHAR_TYPE) ) {
+                    && !leftType.equals(new PrimitiveType(Primitive.CHAR)) ) {
                 left= "str("+left+")";
             }
             if ( leftType.equals(STRING_TYPE) 
                     && rightType instanceof PrimitiveType 
-                    && !rightType.equals(ASTHelper.CHAR_TYPE) ) {
+                    && !rightType.equals(new PrimitiveType(Primitive.CHAR)) ) {
                 right= "str("+right+")";
             }
         }
         
         if ( leftType!=null && !( b.getRight() instanceof NullLiteralExpr )
-                && leftType.equals(ASTHelper.createReferenceType("String", 0)) && rightType==null ) {
+                && leftType.equals(new ClassOrInterfaceType("String")) && rightType==null ) {
             right= "str("+right+")";
         }
         
         switch (op) {
-            case plus:
+            case PLUS:
                 return left + " + " + right;
-            case minus:
+            case MINUS:
                 return left + " - " + right;
-            case divide:
+            case DIVIDE:
                 if ( pythonTarget==PythonTarget.python_3_6 && isIntegerType( leftType ) && isIntegerType( rightType ) ) {
                     return left + " // " + right;
                 } else {
                     return left + " / " + right;
                 }
-            case times:
+            case MULTIPLY:
                 return left + " * " + right;
-            case greater:
+            case GREATER:
                 return left + " > " + right;
-            case less:
+            case LESS:
                 return left + " < " + right;
-            case greaterEquals:
+            case GREATER_EQUALS:
                 return left + " >= " + right;                
-            case lessEquals:
+            case LESS_EQUALS:
                 return left + " <= " + right;
-            case and:
+            case AND:
                 return left + " and " + right;
-            case or:
+            case OR:
                 return left + " or " + right;
-            case equals:
+            case EQUALS:
                 if ( b.getRight() instanceof NullLiteralExpr ) {
                     return left + " is " + right;
                 } else {
                     return left + " == " + right;
                 }
-            case notEquals:
+            case NOT_EQUALS:
                 return left + " != " + right;
-            case remainder:
+            case REMAINDER:
                 return left + " % " + right;
             default:
                 throw new IllegalArgumentException("not supported: "+op);
@@ -658,11 +665,11 @@ public class ConvertJavaToPython {
      * @return 
      */
     private Type guessType( Expression clas ) {
-        ReferenceType STRING = ASTHelper.createReferenceType("String", 0);
+        ReferenceType STRING = new ClassOrInterfaceType("String");
         if ( clas instanceof NameExpr ) {
-            String clasName= ((NameExpr)clas).getName();
+            String clasName= ((NameExpr)clas).getName().asString();
             if ( Character.isUpperCase(clasName.charAt(0)) ) { // Yup, we're assuming that upper case refers to a class
-                return ASTHelper.createReferenceType( clasName,0 );
+                new ClassOrInterfaceType( clasName );
             } else if ( localVariablesStack.peek().containsKey(clasName) ) {
                 return localVariablesStack.peek().get(clasName);
             } else if ( getCurrentScope().containsKey(clasName) ) {
@@ -676,22 +683,22 @@ public class ConvertJavaToPython {
             return guessType(expr.getInner());
         } else if ( clas instanceof UnaryExpr ) {
             UnaryExpr ue= ((UnaryExpr)clas);
-            return guessType(ue.getExpr());
+            return guessType(ue.getExpression());
         } else if ( clas instanceof BinaryExpr ) {
             BinaryExpr be= ((BinaryExpr)clas);
             Type leftType= guessType( be.getLeft() );
             Type rightType= guessType( be.getRight() );
-            if ( be.getOperator()==BinaryExpr.Operator.and ||
-                    be.getOperator()==BinaryExpr.Operator.or || 
-                    be.getOperator()==BinaryExpr.Operator.equals ||
-                    be.getOperator()==BinaryExpr.Operator.notEquals ||
-                    be.getOperator()==BinaryExpr.Operator.greater ||
-                    be.getOperator()==BinaryExpr.Operator.greaterEquals ||
-                    be.getOperator()==BinaryExpr.Operator.less ||
-                    be.getOperator()==BinaryExpr.Operator.lessEquals ) {
-                return ASTHelper.BOOLEAN_TYPE;
+            if ( be.getOperator()==BinaryExpr.Operator.AND ||
+                    be.getOperator()==BinaryExpr.Operator.OR || 
+                    be.getOperator()==BinaryExpr.Operator.EQUALS ||
+                    be.getOperator()==BinaryExpr.Operator.NOT_EQUALS ||
+                    be.getOperator()==BinaryExpr.Operator.GREATER ||
+                    be.getOperator()==BinaryExpr.Operator.GREATER_EQUALS ||
+                    be.getOperator()==BinaryExpr.Operator.LESS ||
+                    be.getOperator()==BinaryExpr.Operator.LESS_EQUALS ) {
+                return new PrimitiveType(Primitive.BOOLEAN);
             }
-            if ( be.getOperator()==BinaryExpr.Operator.plus ) { // we automatically convert ints to strings.
+            if ( be.getOperator()==BinaryExpr.Operator.PLUS ) { // we automatically convert ints to strings.
                 if ( ( leftType!=null && leftType.equals(STRING) ) ||
                         ( rightType!=null && rightType.equals(STRING) ) ) {
                     return STRING;
@@ -714,32 +721,32 @@ public class ConvertJavaToPython {
                 return null;
             }
         } else if ( clas instanceof IntegerLiteralExpr ) {
-            return ASTHelper.INT_TYPE;
+            return new PrimitiveType(Primitive.INT);
         } else if ( clas instanceof CharLiteralExpr ) {
-            return ASTHelper.CHAR_TYPE;
+            return new PrimitiveType(Primitive.CHAR);
         } else if ( clas instanceof LongLiteralExpr ) {
-            return ASTHelper.LONG_TYPE;
+            return new PrimitiveType(Primitive.LONG);
         } else if ( clas instanceof DoubleLiteralExpr ) {
-            return ASTHelper.DOUBLE_TYPE;
+            return new PrimitiveType(Primitive.DOUBLE);
         } else if ( clas instanceof StringLiteralExpr ) {
             return STRING_TYPE;
         } else if ( clas instanceof MethodCallExpr ) {
             MethodCallExpr mce= (MethodCallExpr)clas;
             Type scopeType=null;
-            if ( mce.getScope()!=null ) scopeType= guessType(mce.getScope());
+            if ( mce.getScope().isPresent() ) scopeType= guessType(mce.getScope().get());
             MethodDeclaration md= getCurrentScopeMethods().get(mce.getName());
             if ( md!=null ) {
                 return md.getType();
             }
             if ( scopeType!=null ) {
                 if (  scopeType.toString().equals("Pattern") ) {
-                    if ( mce.getName().equals("matcher") ) {
-                        return ASTHelper.createReferenceType("Matcher", 0);
+                    if ( mce.getName().asString().equals("matcher") ) {
+                        return new ClassOrInterfaceType("Matcher");
                     }
                 } else if ( scopeType.toString().equals("StringBuilder") ) {
                     switch ( mce.getName() ) {
                         case "toString":
-                            return ASTHelper.createReferenceType("String", 0);
+                            return new ClassOrInterfaceType("String");
                     }
                 } else if ( scopeType.toString().equals("String") ) {
                     switch ( mce.getName() ) {
@@ -753,20 +760,20 @@ public class ConvertJavaToPython {
                         case "toUpperCase": 
                             return scopeType;
                         case "length": 
-                            return ASTHelper.INT_TYPE;
+                            return new PrimitiveType(Primitive.INT);
                         case "charAt":
-                            return ASTHelper.CHAR_TYPE;
+                            return new PrimitiveType(Primitive.CHAR);
                     }
                 } else if ( scopeType.toString().equals("Arrays") ) {
                     switch ( mce.getName() ) {
                         case "copyOfRange":
-                            return guessType( mce.getArgs().get(0) );
+                            return guessType( mce.getArguments().get(0) );
                     }
                 }
             }
             switch ( mce.getName() ) { // TODO: consider t
-                case "charAt": return ASTHelper.CHAR_TYPE;
-                case "copyOfRange": return guessType( mce.getArgs().get(0) );
+                case "charAt": return new PrimitiveType(Primitive.CHAR);
+                case "copyOfRange": return guessType( mce.getArguments().get(0) );
             }
         }
         return null;
@@ -811,8 +818,8 @@ public class ConvertJavaToPython {
      */
     private String doConvertMethodCallExpr(String indent,MethodCallExpr methodCallExpr) {
         Expression clas= methodCallExpr.getScope();
-        String name= methodCallExpr.getName();
-        List<Expression> args= methodCallExpr.getArgs();
+        String name= methodCallExpr.getName().asString();
+        List<Expression> args= methodCallExpr.getArguments();
             
         if ( name==null ) {
             name=""; // I don't think this happens
@@ -823,16 +830,16 @@ public class ConvertJavaToPython {
          */
         String clasType="";  
         if ( clas instanceof NameExpr ) {
-            String contextName= ((NameExpr)clas).getName(); // sb in sb.append, or String in String.format.
+            String contextName= ((NameExpr)clas).getName().asString(); // sb in sb.append, or String in String.format.
             Type contextType= localVariablesStack.peek().get(contextName); // allow local variables to override class variables.
             if ( contextType==null ) contextType= getCurrentScope().get(contextName);
             if ( Character.isUpperCase(contextName.charAt(0)) ) { // Yup, we're assuming that upper case refers to a class
                 clasType= contextName;
             } else if ( stringMethods.contains(name) 
-                    && ( contextType==null || contextType.equals(ASTHelper.createReferenceType("String", 0) )) ) {
+                    && ( contextType==null || contextType.equals(new ClassOrInterfaceType("String") )) ) {
                 clasType= "String";
             } else if ( characterMethods.contains(name) 
-                    && ( contextType==null || contextType.equals(ASTHelper.createReferenceType("String", 0) )) ) {
+                    && ( contextType==null || contextType.equals(new ClassOrInterfaceType("String") )) ) {
                 clasType= "Character";
             } else if ( contextType!=null ) {
                 Type t= contextType;
@@ -846,7 +853,7 @@ public class ConvertJavaToPython {
             clasType= "String";
         } else if ( stringMethods.contains(name) ) {
             if ( name.equals("format") ) {
-                if ( ASTHelper.createReferenceType("String", 0).equals(guessType( clas )) ) {
+                if ( new ClassOrInterfaceType("String").equals(guessType( clas )) ) {
                     clasType= "String";
                 }
             } else {
@@ -974,7 +981,7 @@ public class ConvertJavaToPython {
                         return indent + doConvert("",clas) + ".append("+doConvert("",args.get(0))+")";
                     }
                 case "remove":
-                    if ( guessType(args.get(0)).equals(ASTHelper.INT_TYPE) ) {
+                    if ( guessType(args.get(0)).equals(new PrimitiveType(Primitive.INT)) ) {
                         String item = doConvert("",clas) + "["+doConvert("",args.get(0))+"]";
                         return indent + doConvert("",clas) + ".remove(" + item + ")";
                     } else {
@@ -1125,8 +1132,8 @@ public class ConvertJavaToPython {
                     StringBuilder sb= new StringBuilder();
                     Type t1= guessType(args.get(0)); // are both arrays containing primative objects (int,float,etc)
                     Type t2= guessType(args.get(1));
-                    if ( t1!=null && t1.equals(ASTHelper.createReferenceType(ASTHelper.INT_TYPE,1)) 
-                            && t2!=null && t2.equals(ASTHelper.createReferenceType(ASTHelper.INT_TYPE,1)) ) {
+                    if ( t1!=null && t1.equals(new ArrayType(new PrimitiveType(Primitive.INT))) 
+                            && t2!=null && t2.equals(new ArrayType(new PrimitiveType(Primitive.INT))) ) {
                         sb.append(indent).append(doConvert("",args.get(0))).append(" == ");
                         sb.append(doConvert("",args.get(1)));
                         return sb.toString();        
@@ -1210,16 +1217,16 @@ public class ConvertJavaToPython {
                 ((FieldAccessExpr)clas).getField().equals("err") ) {
             StringBuilder sb= new StringBuilder();
             additionalImports.put("import sys\n",Boolean.TRUE);
-            if (  methodCallExpr.getArgs().get(0) instanceof StringLiteralExpr ) {
-                String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+            if (  methodCallExpr.getArguments().get(0) instanceof StringLiteralExpr ) {
+                String s= doConvert( "", methodCallExpr.getArguments().get(0) );
                 String sWithNewLine= s.substring(0,s.length()-1) + "\\n'";
                 sb.append(indent).append( "sys.stderr.write(" ).append(sWithNewLine).append(")");
             } else {
                 String strss;
-                if ( !isStringType( guessType(methodCallExpr.getArgs().get(0)) ) ) {
-                    strss= "str( "+ doConvert( "", methodCallExpr.getArgs().get(0) ) + ")";
+                if ( !isStringType( guessType(methodCallExpr.getArguments().get(0)) ) ) {
+                    strss= "str( "+ doConvert( "", methodCallExpr.getArguments().get(0) ) + ")";
                 } else {
-                    strss= doConvert( "", methodCallExpr.getArgs().get(0) );
+                    strss= doConvert( "", methodCallExpr.getArguments().get(0) );
                 }
                 sb.append(indent).append( "sys.stderr.write(" ).append( strss ).append( "+'\\n')" );
             }
@@ -1227,18 +1234,18 @@ public class ConvertJavaToPython {
         } else if ( name.equals("println") && clas instanceof FieldAccessExpr &&
                 ((FieldAccessExpr)clas).getField().equals("out") ) {
             StringBuilder sb= new StringBuilder();
-            if (  methodCallExpr.getArgs().get(0) instanceof StringLiteralExpr ) {
-                String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+            if (  methodCallExpr.getArguments().get(0) instanceof StringLiteralExpr ) {
+                String s= doConvert( "", methodCallExpr.getArguments().get(0) );
                 sb.append(indent).append( "print(" ).append( s ).append( ")" );
             } else {
-                sb.append(indent).append( "print(" ).append( doConvert( "", methodCallExpr.getArgs().get(0) ) ).append( ")" );
+                sb.append(indent).append( "print(" ).append( doConvert( "", methodCallExpr.getArguments().get(0) ) ).append( ")" );
             }    
             return sb.toString();
         } else if ( name.equals("print") && clas instanceof FieldAccessExpr &&
                 ((FieldAccessExpr)clas).getField().equals("err") ) {
             additionalImports.put("import sys\n",Boolean.TRUE);
             StringBuilder sb= new StringBuilder();
-            String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+            String s= doConvert( "", methodCallExpr.getArguments().get(0) );
             sb.append(indent).append( "sys.stderr.write(" ).append(s).append(")");
             return sb.toString();
         } else if ( name.equals("print") && clas instanceof FieldAccessExpr &&
@@ -1246,21 +1253,21 @@ public class ConvertJavaToPython {
             StringBuilder sb= new StringBuilder();
             if ( pythonTarget==PythonTarget.jython_2_2 ) {
                 sb.append(indent).append("print ");
-                if ( methodCallExpr.getArgs().get(0) instanceof StringLiteralExpr ) {
-                    String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+                if ( methodCallExpr.getArguments().get(0) instanceof StringLiteralExpr ) {
+                    String s= doConvert( "", methodCallExpr.getArguments().get(0) );
                     sb.append( s ).append(",");
                 } else {
-                    sb.append( doConvert( "", methodCallExpr.getArgs().get(0) ) );
+                    sb.append( doConvert( "", methodCallExpr.getArguments().get(0) ) );
                 }
                 
                 sb.append( "," );
             } else {
                 additionalImports.put("import sys\n",Boolean.TRUE);
-                if (  methodCallExpr.getArgs().get(0) instanceof StringLiteralExpr ) {
-                    String s= doConvert( "", methodCallExpr.getArgs().get(0) );
+                if (  methodCallExpr.getArguments().get(0) instanceof StringLiteralExpr ) {
+                    String s= doConvert( "", methodCallExpr.getArguments().get(0) );
                     sb.append(indent).append( "sys.stdout.write(" ).append( s ).append( ")" );
                 } else {
-                    sb.append(indent).append( "sys.stdout.write(" ).append( doConvert( "", methodCallExpr.getArgs().get(0) ) ).append( ")" );
+                    sb.append(indent).append( "sys.stdout.write(" ).append( doConvert( "", methodCallExpr.getArguments().get(0) ) ).append( ")" );
                 }    
             }
             return sb.toString();
@@ -1269,11 +1276,11 @@ public class ConvertJavaToPython {
         } else if ( name.equals("equals") && args.size()==1 ) {
             return indent + doConvert(indent,clas)+" == "+ utilFormatExprList(args);
         } else if ( name.equals("arraycopy") && clasType.equals("System") ) {
-            String target = doConvert( "", methodCallExpr.getArgs().get(2) );
-            String source = doConvert( "", methodCallExpr.getArgs().get(0) );
-            Expression sourceIdx = methodCallExpr.getArgs().get(1);
-            Expression targetIdx = methodCallExpr.getArgs().get(3);
-            Expression length= methodCallExpr.getArgs().get(4);
+            String target = doConvert( "", methodCallExpr.getArguments().get(2) );
+            String source = doConvert( "", methodCallExpr.getArguments().get(0) );
+            Expression sourceIdx = methodCallExpr.getArguments().get(1);
+            Expression targetIdx = methodCallExpr.getArguments().get(3);
+            Expression length= methodCallExpr.getArguments().get(4);
             String targetIndexs= utilCreateIndexs(targetIdx, length);
             String sourceIndexs= utilCreateIndexs(sourceIdx, length);
             String j= String.format( "%s[%s]=%s[%s]", 
@@ -1281,7 +1288,7 @@ public class ConvertJavaToPython {
             return indent + j;
         } else if ( name.equals("exit") && clasType.equals("System") ) {
             additionalImports.put( "import sys\n", Boolean.TRUE );
-            return indent + "sys.exit("+ doConvert("",methodCallExpr.getArgs().get(0)) + ")";
+            return indent + "sys.exit("+ doConvert("",methodCallExpr.getArguments().get(0)) + ")";
 
         } else {
             if ( clasType.equals("System") && name.equals("currentTimeMillis") ) {
@@ -1342,19 +1349,19 @@ public class ConvertJavaToPython {
         Operator operator= assign.getOperator();
         
         switch (operator) {
-            case minus:
+            case MINUS:
                 return indent +target + " -= " + doConvert( "", assign.getValue() );
-            case plus:
+            case PLUS:
                 return indent + target + " += " + doConvert( "", assign.getValue() );
-            case star:
+            case MULTIPLY:
                 return indent + target + " *= " + doConvert( "", assign.getValue() );
-            case slash:
+            case DIVIDE:
                 return indent + target + " /= " + doConvert( "", assign.getValue() );
-            case or:
+            case BINARY_OR:
                 return indent + target + " |= " + doConvert( "", assign.getValue() );
-            case and:
+            case BINARY_AND:
                 return indent + target + " &= " + doConvert( "", assign.getValue() );
-            case assign:
+            case ASSIGN:
                 return indent + target + " = " + doConvert( "", assign.getValue() );
             default:
                 return indent + target + " ??? " + doConvert( "", assign.getValue() ) + " (J2J AssignExpr not supported)";
@@ -1485,9 +1492,6 @@ public class ConvertJavaToPython {
             case "ReferenceType":
                 result= doConvertReferenceType(indent,(ReferenceType)n);
                 break;
-            case "MultiTypeParameter":
-                result= doConvertMultiTypeParameter(indent,(MultiTypeParameter)n);
-                break;
             case "ThrowStmt":
                 result= doConvertThrowStmt(indent,(ThrowStmt)n);
                 break;
@@ -1542,8 +1546,8 @@ public class ConvertJavaToPython {
             case "Parameter":
                 result= indent + ((Parameter)n).getId().getName(); // TODO: varargs, etc
                 break;
-            case "ForeachStmt":
-                result= doConvertForeachStmt(indent,(ForeachStmt)n);
+            case "ForEachStmt":
+                result= doConvertForEachStmt(indent,(ForEachStmt)n);
                 break;
             case "EmptyStmt":
                 result= doConvertEmptyStmt(indent,(EmptyStmt)n);
@@ -1618,13 +1622,13 @@ public class ConvertJavaToPython {
     private String doConvertVariableDeclarationExpr(String indent, VariableDeclarationExpr variableDeclarationExpr) {
         StringBuilder b= new StringBuilder();
         
-        for ( int i=0; i<variableDeclarationExpr.getVars().size(); i++ ) {
+        for ( int i=0; i<variableDeclarationExpr.getVariables().size(); i++ ) {
             if ( i>0 ) b.append("\n");
-            VariableDeclarator v= variableDeclarationExpr.getVars().get(i);
-            String s= v.getId().getName();
-            if ( v.getInit()!=null && v.getInit().toString().startsWith("Logger.getLogger") ) {
+            VariableDeclarator v= variableDeclarationExpr.getVariables().get(i);
+            String s= v.getNameAsString();
+            if ( v.getInitializer().isPresent() && v.getInitializer().get().toString().startsWith("Logger.getLogger") ) {
                 //addLogger();
-                localVariablesStack.peek().put(s,ASTHelper.createReferenceType("Logger",0) );
+                localVariablesStack.peek().put(s,new ClassOrInterfaceType("Logger") );
                 return indent + "# J2J: "+variableDeclarationExpr.toString().trim();
             }
             if ( camelToSnake ) {
@@ -1637,17 +1641,17 @@ public class ConvertJavaToPython {
                 nameMapReverse.put( news, s );
                 s= news;
             }
-            if ( v.getInit()!=null 
-                    && ( v.getInit() instanceof ArrayInitializerExpr ) 
+            if ( v.getInitializer().isPresent() 
+                    && ( v.getInitializer().get() instanceof ArrayInitializerExpr ) 
                     && ( variableDeclarationExpr.getType() instanceof PrimitiveType ) ) {
-                Type t= ASTHelper.createReferenceType( ((PrimitiveType)variableDeclarationExpr.getType()), 1 );
+                Type t= new ArrayType( ((PrimitiveType)variableDeclarationExpr.getType()));
                 localVariablesStack.peek().put( s, t );
             } else {
                 localVariablesStack.peek().put( s, variableDeclarationExpr.getType() );
             }
-            if ( v.getInit()!=null ) {
-                if ( v.getInit() instanceof ConditionalExpr ) { // avoid conditional expression by rewriting
-                    ConditionalExpr cc  = (ConditionalExpr)v.getInit();
+            if ( v.getInitializer().isPresent() ) {
+                if ( v.getInitializer().get() instanceof ConditionalExpr ) { // avoid conditional expression by rewriting
+                    ConditionalExpr cc  = (ConditionalExpr)v.getInitializer().get();
                     b.append( indent ).append("if ").append(doConvert("",cc.getCondition())).append(":\n");
                     b.append(indent).append(s4).append( s );
                     b.append(" = ").append(doConvert("",cc.getThenExpr() )).append("\n");
@@ -1655,12 +1659,12 @@ public class ConvertJavaToPython {
                     b.append(indent).append(s4).append( s );
                     b.append(" = ").append(doConvert("",cc.getElseExpr() )).append("\n");
                 } else {
-                    if ( v.getInit() instanceof ObjectCreationExpr && ((ObjectCreationExpr)v.getInit()).getAnonymousClassBody()!=null ) {
-                        for ( BodyDeclaration bd: ((ObjectCreationExpr)v.getInit()).getAnonymousClassBody() ) {
+                    if ( v.getInitializer().get() instanceof ObjectCreationExpr && ((ObjectCreationExpr)v.getInitializer().get()).getAnonymousClassBody()!=null ) {
+                        for ( BodyDeclaration bd: ((ObjectCreationExpr)v.getInitializer().get()).getAnonymousClassBody() ) {
                             b.append(doConvert( indent+"# J2J:", bd ) );
                         }
                     }
-                    b.append( indent ).append(s).append(" = ").append(doConvert("",v.getInit()) );
+                    b.append( indent ).append(s).append(" = ").append(doConvert("",v.getInitializer().get()) );
                 }
             }
         }
@@ -1673,12 +1677,13 @@ public class ConvertJavaToPython {
         b.append( doConvert("", ifStmt.getCondition() ) );
         b.append(":\n");
         b.append( doConvert(indent,ifStmt.getThenStmt() ) );
-        if ( ifStmt.getElseStmt()!=null ) {
-            if ( ifStmt.getElseStmt() instanceof IfStmt ) {
-                b.append( specialConvertElifStmt( indent, (IfStmt)ifStmt.getElseStmt() ) );
+        if ( ifStmt.getElseStmt().isPresent()) {
+            Statement elseStmt = ifStmt.getElseStmt().get();
+            if ( elseStmt instanceof IfStmt ) {
+                b.append( specialConvertElifStmt( indent, (IfStmt)elseStmt ) );
             } else {
                 b.append(indent).append("else:\n");
-                b.append( doConvert(indent,ifStmt.getElseStmt()) );
+                b.append( doConvert(indent,elseStmt) );
             }
         }
         return b.toString();        
@@ -1690,7 +1695,7 @@ public class ConvertJavaToPython {
         //    System.err.println("here13331");
         //}
         if ( ifStmt.getCondition() instanceof MethodCallExpr && 
-                ((MethodCallExpr)ifStmt.getCondition()).getName().equals("isLoggable") ) {
+                ((MethodCallExpr)ifStmt.getCondition()).getName().asString().equals("isLoggable") ) {
             return indent + "# J2J: if "+ifStmt.getCondition() + " ... removed";
         }
         b.append(indent).append("if ");
@@ -1723,37 +1728,37 @@ public class ConvertJavaToPython {
         StringBuilder b= new StringBuilder();
         localVariablesStack.push( new HashMap<>(localVariablesStack.peek()) );
         
-        List<Expression> init = forStmt.getInit();
+        List<Expression> init = forStmt.getInitialization();
         VariableDeclarationExpr init1= null;
-        VariableDeclaratorId v=null;
+        String variableName = "";
         if ( init!=null && init.size()==1 && init.get(0) instanceof VariableDeclarationExpr ) {
             init1= (VariableDeclarationExpr)init.get(0);
-            if (init1.getVars().size()!=1 ) {
+            if (init1.getVariables().size()!=1 ) {
                 init1= null;
             } else {
-                v= (init1.getVars().get(0)).getId();
+                variableName= (init1.getVariables().get(0)).getName().asString();
             }
         }
-        BinaryExpr compare= forStmt.getCompare() instanceof BinaryExpr ? ((BinaryExpr)forStmt.getCompare()) : null;
+        BinaryExpr compare= (forStmt.getCompare().isPresent() && forStmt.getCompare().get() instanceof BinaryExpr) ? ((BinaryExpr)forStmt.getCompare().get()) : null;
         List<Expression> update= forStmt.getUpdate();
         UnaryExpr update1= null;
         if ( update.size()==1 && update.get(0) instanceof UnaryExpr ) {
             update1= (UnaryExpr)update.get(0);
-            if ( !(update1.getOperator()==UnaryExpr.Operator.posIncrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preIncrement 
-                    || update1.getOperator()==UnaryExpr.Operator.posDecrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preDecrement  ) ) {
+            if ( !(update1.getOperator()==UnaryExpr.Operator.POSTFIX_INCREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_INCREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.POSTFIX_DECREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_DECREMENT  ) ) {
                 update1= null;
             }
         }
         boolean initOkay= init1!=null;
         boolean compareOkay= compare!=null 
-                && ( compare.getOperator()==BinaryExpr.Operator.less || compare.getOperator()==BinaryExpr.Operator.lessEquals 
-                || compare.getOperator()==BinaryExpr.Operator.greater || compare.getOperator()==BinaryExpr.Operator.greaterEquals );
+                && ( compare.getOperator()==BinaryExpr.Operator.LESS|| compare.getOperator()==BinaryExpr.Operator.LESS_EQUALS
+                || compare.getOperator()==BinaryExpr.Operator.GREATER || compare.getOperator()==BinaryExpr.Operator.GREATER_EQUALS );
         String compareTo= doConvert("",compare.getRight());
-        if ( compare.getOperator()==BinaryExpr.Operator.lessEquals ) {
+        if ( compare.getOperator()==BinaryExpr.Operator.LESS_EQUALS) {
             compareTo = compareTo + " + 1";
-        } else if ( compare.getOperator()==BinaryExpr.Operator.greaterEquals ) {
+        } else if ( compare.getOperator()==BinaryExpr.Operator.GREATER_EQUALS ) {
             compareTo = compareTo + " - 1";
         }
         
@@ -1761,11 +1766,11 @@ public class ConvertJavaToPython {
         
         boolean bodyOkay= false;
         if ( initOkay && compareOkay && updateOkay ) { // check that the loop variable isn't modified within loop
-            bodyOkay= utilCheckNoVariableModification( forStmt.getBody(), v.getName() );
+            bodyOkay= utilCheckNoVariableModification( forStmt.getBody(), variableName );
         }
         
         if ( initOkay && compareOkay && updateOkay && bodyOkay ) {
-            b.append(indent).append( "for " ).append( v.getName() ).append(" in ");
+            b.append(indent).append( "for " ).append( variableName ).append(" in ");
             if ( pythonTarget==PythonTarget.jython_2_2 ) {
                 b.append("xrange(");
             } else if ( pythonTarget==PythonTarget.python_3_6 ) {
@@ -1773,10 +1778,10 @@ public class ConvertJavaToPython {
             } else {
                 throw new IllegalArgumentException("not implemented");
             }
-            b.append( doConvert("",init1.getVars().get(0).getInit()) ).append(", ");
+            b.append( doConvert("",init1.getVariables().get(0).getInitializer().get()) ).append(", ");
             b.append( compareTo );
-            if (  update1.getOperator()==UnaryExpr.Operator.posDecrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preDecrement ) {
+            if (  update1.getOperator()==UnaryExpr.Operator.POSTFIX_DECREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_DECREMENT ) {
                 b.append(", -1");
             }
             b.append("):\n");
@@ -1786,7 +1791,7 @@ public class ConvertJavaToPython {
                     b.append(indent).append( doConvert( "", e ) ).append( "\n" );
                 });
             }
-            b.append( indent ).append("while ").append(doConvert( "", forStmt.getCompare() )).append(":  # J2J for loop\n");        
+            b.append( indent ).append("while ").append(doConvert( "", forStmt.getCompare().get() )).append(":  # J2J for loop\n");        
         }
         if ( forStmt.getBody() instanceof ExpressionStmt ) {
             b.append(indent).append(s4).append( doConvert( "", forStmt.getBody() ) ).append("\n");
@@ -1802,13 +1807,13 @@ public class ConvertJavaToPython {
         return b.toString();
     }
 
-    private String doConvertForeachStmt(String indent, ForeachStmt foreachStmt) {
+    private String doConvertForEachStmt(String indent, ForEachStmt foreachStmt) {
         StringBuilder b= new StringBuilder();
-        if ( foreachStmt.getVariable().getVars().size()!=1 ) {
+        if ( foreachStmt.getVariable().getVariables().size()!=1 ) {
             throw new IllegalArgumentException("expected only one variable in foreach statement");
         }
-        String variableName = foreachStmt.getVariable().getVars().get(0).getId().getName();
-        Type variableType= foreachStmt.getVariable().getType();
+        String variableName = foreachStmt.getVariableDeclarator().getName().asString();
+        Type variableType= foreachStmt.getVariableDeclarator().getType();
         localVariablesStack.push( new HashMap<>(localVariablesStack.peek()) );
         localVariablesStack.peek().put( variableName,variableType );
         b.append( indent ).append("for ").append(variableName).append(" in ").append(doConvert("",foreachStmt.getIterable() )).append(":\n");
@@ -1824,15 +1829,12 @@ public class ConvertJavaToPython {
     
     private String doConvertImportDeclaration( String indent, ImportDeclaration d ) {
         StringBuilder sb= new StringBuilder();
-        NameExpr n= d.getName();
-        if ( n instanceof QualifiedNameExpr ) {
-            QualifiedNameExpr qn= (QualifiedNameExpr)n;
-            sb.append( "from " ).append( qn.getQualifier() ).append( " import " ).append( n.getName() );
-        } else {
-            String nn= n.getName();
-            int i= nn.lastIndexOf(".");
-            sb.append( "from " ).append( nn.substring(0,i) ).append( " import " ).append( nn.substring(i));
+        Name n= d.getName();
+        if (n.getQualifier().isPresent()) {
+            Name qualifier = n.getQualifier().get();
+            sb.append( "from " ).append(qualifier.asString()).append( " ");
         }
+        sb.append("import ").append(n.getIdentifier());
         return sb.toString();
     }
 
@@ -1842,7 +1844,7 @@ public class ConvertJavaToPython {
 
         StringBuilder sb= new StringBuilder();
         
-        List<Node> nodes= compilationUnit.getChildrenNodes();
+        List<Node> nodes= compilationUnit.getChildNodes();
         for ( int i=0; i<nodes.size(); i++ ) {
             Node n = nodes.get(i);
             if ( unittest && n instanceof ImportDeclaration ) {
@@ -1854,8 +1856,10 @@ public class ConvertJavaToPython {
                 }
             }
             if ( n instanceof ImportDeclaration ) {
-                javaImports.put(((ImportDeclaration)n).getName().getName(), false );
-                javaImportDeclarations.put(((ImportDeclaration)n).getName().getName(), (ImportDeclaration)n );
+                // TODO: should we get the full import path or just the identifier (last segment)?
+                String importName = ((ImportDeclaration)n).getName().asString();
+                javaImports.put(importName, false );
+                javaImportDeclarations.put(importName, (ImportDeclaration)n );
             } else {
                 sb.append( doConvert( "", n ) ).append("\n");
             }
@@ -1871,23 +1875,24 @@ public class ConvertJavaToPython {
     }
 
     private String doConvertReturnStmt(String indent, ReturnStmt returnStmt) {
-        if ( returnStmt.getExpr()==null ) {
-            return indent + "return";
+        if ( returnStmt.getExpression().isPresent() ) {
+            return indent + "return " + doConvert("", returnStmt.getExpression().get());
         } else {
-            return indent + "return " + doConvert("", returnStmt.getExpr());
+            return indent + "return";
         }
     }
 
     private String doConvertArrayCreationExpr(String indent, ArrayCreationExpr arrayCreationExpr) {
-        if ( arrayCreationExpr.getInitializer()!=null ) {
-            ArrayInitializerExpr ap= arrayCreationExpr.getInitializer();
+        if ( arrayCreationExpr.getInitializer().isPresent() ) {
+            ArrayInitializerExpr ap= arrayCreationExpr.getInitializer().get();
             return "[" + utilFormatExprList( ap.getValues() ) + "]";
         } else {
             String item;
-            if ( arrayCreationExpr.getType().equals( ASTHelper.BYTE_TYPE ) ||
-                    arrayCreationExpr.getType().equals( ASTHelper.SHORT_TYPE ) ||
-                    arrayCreationExpr.getType().equals( ASTHelper.INT_TYPE ) ||
-                    arrayCreationExpr.getType().equals( ASTHelper.LONG_TYPE ) ) {
+            Type elementType = arrayCreationExpr.getElementType();
+            if ( elementType.equals( new PrimitiveType(Primitive.BYTE) ) ||
+                    elementType.equals( new PrimitiveType(Primitive.SHORT) ) ||
+                    elementType.equals( new PrimitiveType(Primitive.INT) ) ||
+                    elementType.equals( new PrimitiveType(Primitive.LONG) ) ) {
                 item="0";
             } else {
                 item= "None";
@@ -1911,7 +1916,7 @@ public class ConvertJavaToPython {
         }
         
         // test to see if this is an array and "length" of the array is accessed.
-        if ( fieldAccessExpr.getField().equals("length") ) {
+        if ( fieldAccessExpr.getName().asString().equals("length") ) {
             String inContext= s;
             if ( inContext.startsWith("self.") ) {
                 inContext= inContext.substring(5);
@@ -1925,10 +1930,10 @@ public class ConvertJavaToPython {
             }
         }
         if ( onlyStatic && s.equals(classNameStack.peek()) ) {
-            return fieldAccessExpr.getField();
+            return fieldAccessExpr.getName().asString();
         } else {
             if ( s.equals("Collections") ) {
-                String f= fieldAccessExpr.getField();
+                String f= fieldAccessExpr.getName().asString();
                 switch (f) {
                     case "EMPTY_MAP":
                         return indent + "{}";
@@ -1940,7 +1945,7 @@ public class ConvertJavaToPython {
                         break;
                 }
             }
-            return indent + s + "." + fieldAccessExpr.getField();
+            return indent + s + "." + fieldAccessExpr.getName().asString();
         }
     }
 
@@ -1950,36 +1955,36 @@ public class ConvertJavaToPython {
 
     private String doConvertUnaryExpr(String indent, UnaryExpr unaryExpr) {
          switch (unaryExpr.getOperator()) {
-            case preIncrement: {
-                additionalClasses.put("# J2J: increment used at line "+unaryExpr.getBeginLine()+", which needs human study.\n",true );
-                String n= doConvert("",unaryExpr.getExpr());
+            case PREFIX_INCREMENT: {
+                additionalClasses.put("# J2J: increment used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " + 1";
             }
-            case preDecrement: {
-                additionalClasses.put("# J2J: decrement used at line "+unaryExpr.getBeginLine()+", which needs human study.\n",true );
-                String n= doConvert("",unaryExpr.getExpr());
+            case PREFIX_DECREMENT: {
+                additionalClasses.put("# J2J: decrement used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " - 1";
             }
-            case posIncrement: {
-                additionalClasses.put("# J2J: increment used at line "+unaryExpr.getBeginLine()+", which needs human study.\n",true );
-                String n= doConvert("",unaryExpr.getExpr());
+            case POSTFIX_INCREMENT: {
+                additionalClasses.put("# J2J: increment used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " + 1";
             }
-            case posDecrement: {
-                additionalClasses.put("# J2J: decrement used at line "+unaryExpr.getBeginLine()+", which needs human study.\n",true );
-                String n= doConvert("",unaryExpr.getExpr());
+            case POSTFIX_DECREMENT: {
+                additionalClasses.put("# J2J: decrement used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " - 1";
             }
-            case positive: {
-                String n= doConvert("",unaryExpr.getExpr());
+            case PLUS: {
+                String n= doConvert("",unaryExpr.getExpression());
                 return indent + "+"+n;
             }
-            case negative: {
-                String n= doConvert("",unaryExpr.getExpr());
+            case MINUS: {
+                String n= doConvert("",unaryExpr.getExpression());
                 return indent + "-"+n;
             }
-            case not: {
-                String n= doConvert("",unaryExpr.getExpr());
+            case LOGICAL_COMPLEMENT: {
+                String n= doConvert("",unaryExpr.getExpression());
                 return indent + "not "+n;
             } 
             default:
@@ -1988,13 +1993,13 @@ public class ConvertJavaToPython {
     }
 
     private String doConvertInitializerDeclaration(String indent, InitializerDeclaration initializerDeclaration) {
-        return doConvert(indent,initializerDeclaration.getBlock());
+        return doConvert(indent,initializerDeclaration.getBody());
     }
     
     private String doConvertClassOrInterfaceDeclaration(String indent, ClassOrInterfaceDeclaration classOrInterfaceDeclaration) {
         StringBuilder sb= new StringBuilder();
         
-        String name = classOrInterfaceDeclaration.getName();
+        String name = classOrInterfaceDeclaration.getName().asString();
         if ( classNameStack.isEmpty() ) {
             theClassName= name;
         }
@@ -2006,7 +2011,7 @@ public class ConvertJavaToPython {
         getCurrentScope().put( "this", new ClassOrInterfaceType(name) );
         
         if ( onlyStatic ) {
-            List<Node> methods= classOrInterfaceDeclaration.getChildrenNodes();
+            List<Node> methods= classOrInterfaceDeclaration.getChildNodes();
             //TODO: can we detect that two methods can be folded together?
             String[] ss= overloadedMethodCheck(methods);
             for ( int i=0; i<methods.size(); i++ ) {
@@ -2046,11 +2051,11 @@ public class ConvertJavaToPython {
                 pythonName= name;
             }
             
-            if ( classOrInterfaceDeclaration.getExtends()!=null && classOrInterfaceDeclaration.getExtends().size()==1 ) { 
-                String extendName= doConvert( "", classOrInterfaceDeclaration.getExtends().get(0) );
+            if ( classOrInterfaceDeclaration.getExtendedTypes().size()==1 ) { 
+                String extendName= doConvert( "", classOrInterfaceDeclaration.getExtendedTypes().get(0) );
                 sb.append( indent ).append("class " ).append( pythonName ).append("(" ).append(extendName).append(")").append(":\n");
-            } else if ( classOrInterfaceDeclaration.getImplements()!=null ) { 
-                List<ClassOrInterfaceType> impls= classOrInterfaceDeclaration.getImplements();
+            } else if ( !classOrInterfaceDeclaration.getImplementedTypes().isEmpty() ) { 
+                List<ClassOrInterfaceType> impls= classOrInterfaceDeclaration.getImplementedTypes();
                 StringBuilder implementsName= new StringBuilder( doConvert( "", impls.get(0) ) );
                 for ( int i=1; i<impls.size(); i++ ) {
                     implementsName.append(",").append( doConvert( "", impls.get(i) ) );
@@ -2067,21 +2072,21 @@ public class ConvertJavaToPython {
 
             // check to see if any two methods can be combined.
             // https://github.com/jbfaden/JavaJythonConverter/issues/5
-            classOrInterfaceDeclaration.getChildrenNodes().forEach((n) -> {
+            classOrInterfaceDeclaration.getChildNodes().forEach((n) -> {
                 if ( n instanceof MethodDeclaration ) {
-                    classMethods.put( ((MethodDeclaration) n).getName(), classOrInterfaceDeclaration );
-                    getCurrentScopeMethods().put(((MethodDeclaration) n).getName(),(MethodDeclaration)n );
+                    classMethods.put( ((MethodDeclaration) n).getNameAsString(), classOrInterfaceDeclaration );
+                    getCurrentScopeMethods().put(((MethodDeclaration) n).getNameAsString(),(MethodDeclaration)n );
                 } else if ( n instanceof ClassOrInterfaceDeclaration ) {
                     ClassOrInterfaceDeclaration coid= (ClassOrInterfaceDeclaration)n;
-                    getCurrentScope().put( coid.getName(), new ClassOrInterfaceType(coid.getName()) );
+                    getCurrentScope().put( coid.getNameAsString(), new ClassOrInterfaceType(coid.getNameAsString()) );
                 }
             });
             
             // check for unique names
             Map<String,Node> nn= new HashMap<>();
-            for ( Node n: classOrInterfaceDeclaration.getChildrenNodes() ) {
+            for ( Node n: classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof ClassOrInterfaceType ) {
-                    String name1= ((ClassOrInterfaceType)n).getName();
+                    String name1= ((ClassOrInterfaceType)n).getName().asString();
                     if ( nn.containsKey(name1) ) {
                         sb.append(indent).append(s4).append("# J2J: Name is used twice in class: ")
                                 .append(pythonName).append(" ").append(name1).append("\n");
@@ -2089,7 +2094,7 @@ public class ConvertJavaToPython {
                     nn.put( name1, n );
                 } else if ( n instanceof FieldDeclaration ) {
                     for ( VariableDeclarator vd : ((FieldDeclaration)n).getVariables() ) {
-                        String name1= vd.getId().getName();
+                        String name1= vd.getName().asString();
                         if ( nn.containsKey(name1) ) {
                             sb.append(indent).append(s4).append("# J2J: Name is used twice in class: ")
                                 .append(pythonName).append(" ").append(name1).append("\n");
@@ -2103,7 +2108,7 @@ public class ConvertJavaToPython {
                             continue;
                         }
                     }
-                    String name1= md.getName();
+                    String name1= md.getName().asString();
                     if ( nn.containsKey(name1) ) {
                             sb.append(indent).append(s4).append("# J2J: Name is used twice in class: ")
                                 .append(pythonName).append(" ").append(name1).append("\n");
@@ -2114,10 +2119,8 @@ public class ConvertJavaToPython {
                 }
             }
             
-            for ( Node n : classOrInterfaceDeclaration.getChildrenNodes() ) {
+            for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof ClassOrInterfaceType ) {
-                    // skip this strange node
-                } else if ( n instanceof EmptyMemberDeclaration ) {
                     // skip this strange node
                 } else if ( n instanceof ConstructorDeclaration ) {
                     if ( unittest && pythonTarget==PythonTarget.python_3_6 ) {
@@ -2140,7 +2143,7 @@ public class ConvertJavaToPython {
             
             if ( unittest && pythonTarget==PythonTarget.jython_2_2 ) {
                 sb.append("test = ").append(classOrInterfaceDeclaration.getName()).append("()\n");
-                for ( Node n : classOrInterfaceDeclaration.getChildrenNodes() ) {
+                for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                     if ( n instanceof MethodDeclaration 
                             && ((MethodDeclaration)n).getName().startsWith("test") 
                             && ((MethodDeclaration)n).getParameters()==null ) {
@@ -2159,19 +2162,19 @@ public class ConvertJavaToPython {
     }
 
     private String doConvertMethodDeclaration(String indent, MethodDeclaration methodDeclaration) {
-        boolean isStatic= ModifierSet.isStatic(methodDeclaration.getModifiers() );
+        boolean isStatic= ConversionUtils.isStaticMethod(methodDeclaration);
         
         if ( onlyStatic && !isStatic ) {
             return "";
         } else if ( isStatic ) {
-            if ( methodDeclaration.getName().equals("main") ) {
+            if ( methodDeclaration.getName().asString().equals("main") ) {
                 hasMain= true;
             }
         }
         
         if ( methodDeclaration.getAnnotations()!=null ) {
             for ( AnnotationExpr a : methodDeclaration.getAnnotations() ) {
-                if ( a.getName().getName().equals("Deprecated") ) {
+                if ( a.getName().getName().asString().equals("Deprecated") ) {
                     return "";
                 }
             }
@@ -2184,7 +2187,7 @@ public class ConvertJavaToPython {
             sb.append( indent ).append( "@staticmethod\n" );
         }
         
-        String methodName= methodDeclaration.getName();
+        String methodName= methodDeclaration.getName().asString();
         String pythonName;
         if ( camelToSnake ) {
             pythonName= camelToSnakeAndRegister(methodName);
@@ -2205,7 +2208,7 @@ public class ConvertJavaToPython {
 
         if ( methodDeclaration.getParameters()!=null ) {
             for ( Parameter p: methodDeclaration.getParameters() ) { 
-                String name= p.getId().getName();
+                String name= p.getName().asString();
                 String pythonParameterName;
                 if ( camelToSnake ) {
                     pythonParameterName= camelToSnakeAndRegister(name);
@@ -2238,7 +2241,7 @@ public class ConvertJavaToPython {
     }
     
     private String doConvertFieldDeclaration(String indent, FieldDeclaration fieldDeclaration) {
-        boolean s= ModifierSet.isStatic( fieldDeclaration.getModifiers() ); // TODO: static fields
+        boolean s= ConversionUtils.isStaticField(fieldDeclaration); // TODO: static fields
         
         if ( onlyStatic && !s ) {
             return "";
@@ -2250,8 +2253,7 @@ public class ConvertJavaToPython {
         sb.append( utilRewriteComments( indent, fieldDeclaration.getComment() ) );
         if ( vv!=null ) {
             for ( VariableDeclarator v: vv ) {
-                VariableDeclaratorId id= v.getId();
-                String name= id.getName();
+                String name= v.getName().asString();
                 String pythonName;
                 if ( camelToSnake ) {
                     pythonName= camelToSnakeAndRegister(name);
@@ -2259,32 +2261,32 @@ public class ConvertJavaToPython {
                     pythonName= name;
                 }
                 
-                if ( v.getInit()!=null && v.getInit().toString().startsWith("Logger.getLogger") ) {
-                    getCurrentScope().put( name, ASTHelper.createReferenceType("Logger", 0) );
+                if ( v.getInitializer().isPresent() && v.getInitializer().get().toString().startsWith("Logger.getLogger") ) {
+                    getCurrentScope().put( name, new ClassOrInterfaceType("Logger") );
                     //addLogger();
                     sb.append( indent ).append("# J2J: ").append(fieldDeclaration.toString());
                     continue;
                 }
                 
-                getCurrentScope().put( name,fieldDeclaration.getType() );
+                getCurrentScope().put( name,ConversionUtils.getFieldType(fieldDeclaration) );
                 getCurrentScopeFields().put( name,fieldDeclaration);
 
-                if ( v.getInit()==null ) {
-                    String implicitDeclaration = utilImplicitDeclaration( fieldDeclaration.getType() );
+                if ( !v.getInitializer().isPresent() ) {
+                    String implicitDeclaration = utilImplicitDeclaration( ConversionUtils.getFieldType(fieldDeclaration) );
                     if ( implicitDeclaration!=null ) {
                         sb.append( indent ).append( pythonName ).append(" = ").append( implicitDeclaration ).append("\n");
                     } else {
                         sb.append( indent ).append( pythonName ).append(" = ").append( "None  # J2J added" ).append("\n");
                     }
-                } else if ( v.getInit() instanceof ConditionalExpr ) {
-                    ConditionalExpr ce= (ConditionalExpr)v.getInit();
+                } else if ( v.getInitializer().get() instanceof ConditionalExpr ) {
+                    ConditionalExpr ce= (ConditionalExpr)v.getInitializer().get();
                     sb.append( indent ).append("if ").append(doConvert( "",ce.getCondition() )).append(":\n");
                     sb.append( indent ).append(s4).append(pythonName).append(" = ").append( doConvert( "",ce.getThenExpr() ) ).append("\n");
                     sb.append( indent ).append( "else:\n");
                     sb.append( indent ).append(s4).append(pythonName).append(" = ").append( doConvert( "",ce.getElseExpr() ) ).append("\n");
                     
                 } else {
-                    sb.append( indent ).append(pythonName).append(" = ").append( doConvert( "",v.getInit() ) ).append("\n");
+                    sb.append( indent ).append(pythonName).append(" = ").append( doConvert( "",v.getInitializer().get() ) ).append("\n");
                     
                 }
             }
@@ -2293,7 +2295,7 @@ public class ConvertJavaToPython {
     }
 
     private String doConvertThrowStmt(String indent, ThrowStmt throwStmt) {
-        return indent + "raise "+ doConvert("",throwStmt.getExpr());
+        return indent + "raise "+ doConvert("",throwStmt.getExpression());
     }
 
     private String doConvertWhileStmt(String indent, WhileStmt whileStmt) {
@@ -2321,7 +2323,7 @@ public class ConvertJavaToPython {
         int nses= switchStmt.getEntries().size();
         List<Expression> labels= new ArrayList<>();
         for ( int ises = 0; ises<nses; ises++ ) {
-            SwitchEntryStmt ses = switchStmt.getEntries().get(ises);
+            SwitchEntry ses = switchStmt.getEntries().get(ises);
             List<Statement> statements= ses.getStmts();
             if ( statements==null ) {
                 // fall-through not supported
@@ -2386,8 +2388,9 @@ public class ConvertJavaToPython {
         return sb.toString();
     }
 
-    private static String utilRewriteComments(String indent, Comment comments) {
-        if ( comments==null ) return "";
+    private static String utilRewriteComments(String indent, Optional<Comment> commentsOptional) {
+        if ( commentsOptional==null || !commentsOptional.isPresent() ) return "";
+        Comment comments = commentsOptional.get();
         StringBuilder b= new StringBuilder();
         String[] ss= comments.getContent().split("\n");
         if ( ss[0].trim().length()==0 ) {
@@ -2420,10 +2423,10 @@ public class ConvertJavaToPython {
     
     private String doConvertObjectCreationExpr(String indent, ObjectCreationExpr objectCreationExpr) {
         if ( objectCreationExpr.getType().toString().equals("StringBuilder") ) {
-            if ( objectCreationExpr.getArgs()!=null ) {
-                if ( objectCreationExpr.getArgs().size()==1 ) {
-                    Expression e= objectCreationExpr.getArgs().get(0);
-                    if ( ASTHelper.INT_TYPE.equals(guessType(e)) ) { // new StringBuilder(100);
+            if ( objectCreationExpr.getArguments()!=null ) {
+                if ( objectCreationExpr.getArguments().size()==1 ) {
+                    Expression e= objectCreationExpr.getArguments().get(0);
+                    if ( new PrimitiveType(Primitive.INT).equals(guessType(e)) ) { // new StringBuilder(100);
                         return "\"\"";
                     } else {
                         return indent + utilAssertStr(e);
@@ -2435,47 +2438,48 @@ public class ConvertJavaToPython {
                 return indent + "\"\"";
             }
         } else if ( objectCreationExpr.getType().toString().endsWith("Exception") ) {
-            if ( objectCreationExpr.getArgs()==null ) {
+            if ( objectCreationExpr.getArguments()==null ) {
                 return indent + "Exception()";
             } else {
-                return indent + "Exception("+ doConvert("",objectCreationExpr.getArgs().get(0))+")";
+                return indent + "Exception("+ doConvert("",objectCreationExpr.getArguments().get(0))+")";
             }
         } else {
             String qualifiedName= utilQualifyClassName(objectCreationExpr.getType());
             if ( qualifiedName!=null ) {
-                return indent + qualifiedName + "("+ utilFormatExprList(objectCreationExpr.getArgs())+ ")";
+                return indent + qualifiedName + "("+ utilFormatExprList(objectCreationExpr.getArguments())+ ")";
             } else {
-                if ( objectCreationExpr.getAnonymousClassBody()!=null ) {
+                if ( objectCreationExpr.getAnonymousClassBody().isPresent() ) {
                     StringBuilder sb= new StringBuilder();
-                    String body= doConvert( indent, objectCreationExpr.getAnonymousClassBody().get(0) );
-                    sb.append(indent).append(objectCreationExpr.getType()).append("(").append(utilFormatExprList(objectCreationExpr.getArgs())).append(")"); 
+                    String body= doConvert( indent, objectCreationExpr.getAnonymousClassBody().get().get(0) );
+                    sb.append(indent).append(objectCreationExpr.getType()).append("(").append(utilFormatExprList(objectCreationExpr.getArguments())).append(")"); 
                     sb.append("*** # J2J: This is extended in an anonymous inner class ***");
                     return sb.toString();
                 } else {
-                    if ( objectCreationExpr.getType().getName().equals("HashMap") ) { 
+                    if ( objectCreationExpr.getType().getName().asString().equals("HashMap") ) { 
                         return indent + "{}";
-                    } else if ( objectCreationExpr.getType().getName().equals("ArrayList") ) { 
+                    } else if ( objectCreationExpr.getType().getName().asString().equals("ArrayList") ) { 
                         return indent + "[]";
-                    } else if ( objectCreationExpr.getType().getName().equals("HashSet") ) {
+                    } else if ( objectCreationExpr.getType().getName().asString().equals("HashSet") ) {
                         return indent + "{}"; // to support Jython 2.2, use dictionary for now
                     } else {
-                        if ( javaImports.keySet().contains( objectCreationExpr.getType().getName() ) ) {
-                            javaImports.put( objectCreationExpr.getType().getName(), true );
+                        String typeName = objectCreationExpr.getType().getName().asString();
+                        if ( javaImports.keySet().contains( typeName ) ) {
+                            javaImports.put( typeName, true );
                         }
-                        if ( objectCreationExpr.getType().getName().equals("String") ) {
-                            if ( objectCreationExpr.getArgs().size()==1 ) {
-                                Expression e= objectCreationExpr.getArgs().get(0);
+                        if ( typeName.equals("String") ) {
+                            if ( objectCreationExpr.getArguments().size()==1 ) {
+                                Expression e= objectCreationExpr.getArguments().get(0);
                                 Type t= guessType(e);
                                 if ( t instanceof ReferenceType 
-                                        && t.equals(ASTHelper.createReferenceType(ASTHelper.CHAR_TYPE,1) ) ) {
+                                        && t.equals(new ArrayType(new PrimitiveType(Primitive.CHAR)) ) ) {
                                     return indent + "''.join( "+ doConvert("",e) +")";
-                                } else if ( t.equals(ASTHelper.createReferenceType("StringBuilder",0) ) ) {
+                                } else if ( t.equals(new ClassOrInterfaceType("StringBuilder") ) ) {
                                     return  doConvert("",e); // these are just strings.
                                 }
                                 System.err.println("here "+t);
                             }
                         }
-                        return indent + objectCreationExpr.getType() + "("+ utilFormatExprList(objectCreationExpr.getArgs())+ ")";
+                        return indent + objectCreationExpr.getType() + "("+ utilFormatExprList(objectCreationExpr.getArguments())+ ")";
                     }
                 }
             }
@@ -2488,13 +2492,11 @@ public class ConvertJavaToPython {
         sb.append(indent).append("def __init__(self");
         if ( params.trim().length()>0 ) sb.append(",").append(params);
         sb.append("):\n");
-        if ( constructorDeclaration.getParameters()!=null ) {
-            for ( Parameter p: constructorDeclaration.getParameters() ) { 
-                String name= p.getId().getName();
+        for ( Parameter p: constructorDeclaration.getParameters() ) { 
+                String name= p.getName().asString();
                 localVariablesStack.peek().put( name, p.getType() );
-            }
         }
-        sb.append( doConvert(indent,constructorDeclaration.getBlock()) );
+        sb.append( doConvert(indent,constructorDeclaration.getBody()) );
         return sb.toString();
     }
 
@@ -2526,7 +2528,7 @@ public class ConvertJavaToPython {
                 type= "str";
                 break;
             case "char":
-                if ( isIntegerType(guessType(castExpr.getExpr())) ) {
+                if ( isIntegerType(guessType(castExpr.getExpression())) ) {
                     type = "chr";
                 } else {
                     type = "str";
@@ -2542,31 +2544,28 @@ public class ConvertJavaToPython {
                 type = ""; // (FieldHandler)fh
                 break;
         }
-        return type + "(" + doConvert("", castExpr.getExpr() ) + ")";
+        return type + "(" + doConvert("", castExpr.getExpression() ) + ")";
     }
 
     private String doConvertTryStmt(String indent, TryStmt tryStmt) {
         StringBuilder sb= new StringBuilder();
         sb.append( indent ).append( "try:\n");
         sb.append( doConvert( indent, tryStmt.getTryBlock() ) );
-        for ( CatchClause cc: tryStmt.getCatchs() ) {
-            String id= doConvert( "",cc.getExcept().getId() );
+        for ( CatchClause cc: tryStmt.getCatchClauses() ) {
+            String id= cc.getParameter().getName().asString();
             if ( pythonTarget==PythonTarget.python_3_6 ) {
                 sb.append(indent).append("except Exception as ").append( id ).append(":  # J2J: exceptions\n");
             } else {
-                sb.append(indent).append("except ").append(doConvert( "",cc.getExcept() )).append( ", ").append(id).append(":\n");
+                // TODO: do we want getParameter or just the type name for the parameter?
+                sb.append(indent).append("except ").append(doConvert( "",cc.getParameter() )).append( ", ").append(id).append(":\n");
             }
-            sb.append( doConvert( indent, cc.getCatchBlock() ) );
+            sb.append( doConvert( indent, cc.getBody() ) );
         }
-        if ( tryStmt.getFinallyBlock()!=null ) {
+        if ( tryStmt.getFinallyBlock().isPresent() ) {
             sb.append( indent ).append( "finally:\n");
-            sb.append( doConvert( indent, tryStmt.getFinallyBlock() ) );
+            sb.append( doConvert( indent, tryStmt.getFinallyBlock().get() ) );
         }
         return sb.toString();
-    }
-
-    private String doConvertMultiTypeParameter(String indent, MultiTypeParameter multiTypeParameter) {
-        return utilFormatTypeList( multiTypeParameter.getTypes() );
     }
 
     private String doConvertReferenceType(String indent, ReferenceType referenceType) {
@@ -2764,7 +2763,7 @@ public class ConvertJavaToPython {
             builder.append(indent).append("class ").append(enumDeclaration.getName()).append(":\n");
             List<EnumConstantDeclaration> ll = enumDeclaration.getEntries();
             
-            for ( Node n: enumDeclaration.getChildrenNodes() ) {
+            for ( Node n: enumDeclaration.getChildNodes() ) {
                 if ( n instanceof ConstructorDeclaration ) {
                     String params= utilFormatParameterList( ((ConstructorDeclaration)n).getParameters() );
                     builder.append(indent).append(s4 + "def compare( self, o1, o2 ):\n");
@@ -2773,14 +2772,14 @@ public class ConvertJavaToPython {
             }
 
             for ( EnumConstantDeclaration l : ll ) {
-                String args = utilFormatExprList(l.getArgs()); 
+                String args = utilFormatExprList(l.getArguments()); 
                 args= "";// we drop the args
-                //TODO find anonymous extension  l.getArgs().get(0).getChildrenNodes()
+                //TODO find anonymous extension  l.getArguments().get(0).getChildNodes()
                 builder.append(indent).append(enumDeclaration.getName()).append(".").append(l.getName()).append(" = ")
                         .append(enumDeclaration.getName()).append("(").append(args).append(")") .append("\n");
                 String methodName=null;
-                if ( l.getArgs().get(0).getChildrenNodes()!=null ) {
-                    for ( Node n: l.getArgs().get(0).getChildrenNodes() ) {
+                if ( l.getArguments().get(0).getChildNodes()!=null ) {
+                    for ( Node n: l.getArguments().get(0).getChildNodes() ) {
                         if ( n instanceof MethodDeclaration ) {
                             methodName= ((MethodDeclaration)n).getName();
                             builder.append( doConvert( indent, n ) );
@@ -2833,7 +2832,7 @@ public class ConvertJavaToPython {
     }
 
     private String doConvertNameExpr(String indent, NameExpr nameExpr) {
-        String s= nameExpr.getName();
+        String s= nameExpr.getName().asString();
         String scope;
         if ( localVariablesStack.peek().containsKey(s) ) {
             scope = ""; // local variable
@@ -2862,9 +2861,9 @@ public class ConvertJavaToPython {
         if ( exprType==null ) {
             return false;
         }
-        return exprType.equals(ASTHelper.INT_TYPE)
-                || exprType.equals(ASTHelper.LONG_TYPE) 
-                || exprType.equals(ASTHelper.SHORT_TYPE );
+        return exprType.equals(new PrimitiveType(Primitive.INT))
+                || exprType.equals(new PrimitiveType(Primitive.LONG)) 
+                || exprType.equals(new PrimitiveType(Primitive.SHORT) );
     }
 
     /**
@@ -2877,7 +2876,7 @@ public class ConvertJavaToPython {
         if ( exprType==null ) {
             return false;
         }
-        return exprType.equals(STRING_TYPE) || exprType.equals(ASTHelper.CHAR_TYPE);
+        return exprType.equals(STRING_TYPE) || exprType.equals(new PrimitiveType(Primitive.CHAR));
     }
     
     private boolean utilCheckNoVariableModification(BlockStmt body, String name ) {
@@ -2890,7 +2889,7 @@ public class ConvertJavaToPython {
     }
 
     private boolean utilCheckNoVariableModification(Statement body, String name ) {
-        for ( Node n: body.getChildrenNodes() ) {
+        for ( Node n: body.getChildNodes() ) {
             if ( n instanceof BlockStmt ) {
                 return utilCheckNoVariableModification((BlockStmt)n, name );
             } else if ( n instanceof ExpressionStmt ) {
@@ -2918,12 +2917,12 @@ public class ConvertJavaToPython {
         if ( leftType!=null && leftType.equals(rightType) ) {
             return leftType;
         }
-        if ( ( leftType==ASTHelper.DOUBLE_TYPE || leftType==ASTHelper.FLOAT_TYPE ) 
-            && ( isIntegerType(rightType) || rightType==ASTHelper.BYTE_TYPE ) ) {
+        if ( ( leftType==new PrimitiveType(Primitive.DOUBLE) || leftType==new PrimitiveType(Primitive.FLOAT) ) 
+            && ( isIntegerType(rightType) || rightType==new PrimitiveType(Primitive.BYTE) ) ) {
             return leftType;
         }
-        if ( ( rightType==ASTHelper.DOUBLE_TYPE || rightType==ASTHelper.FLOAT_TYPE ) 
-            && ( isIntegerType(leftType) || leftType==ASTHelper.BYTE_TYPE ) ) {
+        if ( ( rightType==new PrimitiveType(Primitive.DOUBLE) || rightType==new PrimitiveType(Primitive.FLOAT) ) 
+            && ( isIntegerType(leftType) || leftType==new PrimitiveType(Primitive.BYTE) ) ) {
             return rightType;
         }
         return null;
@@ -2973,10 +2972,10 @@ public class ConvertJavaToPython {
                                         if ( e instanceof MethodCallExpr ) {
                                             MethodCallExpr mce= (MethodCallExpr)e;
                                             if ( mce.getName().equals(m2.getName()) ) {
-                                                List<Node> arguments= es1.getExpression().getChildrenNodes();
+                                                List<Node> arguments= es1.getExpression().getChildNodes();
                                                 if ( arguments.size()==m2.getParameters().size() ) {
                                                     Node n= arguments.get(arguments.size()-1);
-                                                    String name= extraParameter.getId().getName();
+                                                    String name= extraParameter.getId().getName().asString();
                                                     result[i]= "can be combined with " + name + "="+ n;
                                                 }
                                             }

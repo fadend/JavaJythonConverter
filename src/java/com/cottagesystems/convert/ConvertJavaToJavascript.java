@@ -1,8 +1,9 @@
 
 package com.cottagesystems.convert;
 
+import com.cottagesystems.convert.ConversionUtils;
 import static com.cottagesystems.convert.ConvertJavaToPython.stringMethods;
-import com.github.javaparser.ASTHelper;
+import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseException;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
@@ -10,18 +11,14 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
-import com.github.javaparser.ast.body.EmptyMemberDeclaration;
 import com.github.javaparser.ast.body.EnumConstantDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.InitializerDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.ModifierSet;
-import com.github.javaparser.ast.body.MultiTypeParameter;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.body.VariableDeclaratorId;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.ArrayAccessExpr;
@@ -57,13 +54,15 @@ import com.github.javaparser.ast.stmt.ForEachStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import com.github.javaparser.ast.stmt.Statement;
-import com.github.javaparser.ast.stmt.SwitchEntryStmt;
+import com.github.javaparser.ast.stmt.SwitchEntry;
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.stmt.TryStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
+import com.github.javaparser.ast.type.ArrayType;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.PrimitiveType;
+import com.github.javaparser.ast.type.PrimitiveType.Primitive;
 import com.github.javaparser.ast.type.ReferenceType;
 import com.github.javaparser.ast.type.Type;
 import java.io.BufferedReader;
@@ -87,6 +86,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Stack;
+import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -113,6 +113,7 @@ public class ConvertJavaToJavascript {
         this.localVariablesStack.push( new HashMap<>() );
     }
 
+    JavaParser javaParser = new JavaParser();
     
     private static String s4="    ";
     
@@ -120,7 +121,7 @@ public class ConvertJavaToJavascript {
         ParseException throwMe;
         try {
             ByteArrayInputStream ins= new ByteArrayInputStream( javasrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
+            CompilationUnit unit= ConversionUtils.extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
             String src= doConvert( "", unit );
             if ( !additionalImports.isEmpty() ) {
                 StringBuilder additionalImportsSrc= new StringBuilder();
@@ -159,12 +160,12 @@ public class ConvertJavaToJavascript {
             String[] lines= javasrc.split("\n");
             numLinesIn= lines.length;
             int offset=0;
-            Expression parseExpression = com.github.javaparser.JavaParser.parseExpression(javasrc);
+            Expression parseExpression = ConversionUtils.extractParseResult(javaParser.parseExpression(javasrc));
             StringBuilder bb= new StringBuilder( doConvert( "", parseExpression ) );
             int linesHandled=0;
-            while ( (linesHandled+parseExpression.getEndLine())<lines.length ) {
+            while ( (linesHandled+ConversionUtils.getEndLine(parseExpression))<lines.length ) {
                 int additionalLinesHandled=0;
-                for ( int i=0; i<parseExpression.getEndLine(); i++ ) {
+                for ( int i=0; i<ConversionUtils.getEndLine(parseExpression); i++ ) {
                     offset += lines[i].length() ;
                     offset += 1;
                     additionalLinesHandled++;
@@ -174,7 +175,7 @@ public class ConvertJavaToJavascript {
                     break;
                 }
                 linesHandled+= additionalLinesHandled;
-                parseExpression = com.github.javaparser.JavaParser.parseExpression(javasrc.substring(offset));
+                parseExpression = javaParser.parseExpression(javasrc.substring(offset));
                 bb.append( "\n" ).append( doConvert( "", parseExpression ) );
             }
             String src= bb.toString();
@@ -207,7 +208,7 @@ public class ConvertJavaToJavascript {
         
         try {
             if ( numLinesIn < 2 ) {
-                Statement parsed = com.github.javaparser.JavaParser.parseStatement(javasrc);
+                Statement parsed = ConversionUtils.extractParseResult(javaParser.parseStatement(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex2) {
@@ -216,7 +217,7 @@ public class ConvertJavaToJavascript {
 
         try {
             if ( numLinesIn < 2 ) {
-                BodyDeclaration parsed = com.github.javaparser.JavaParser.parseBodyDeclaration(javasrc);
+                BodyDeclaration parsed = ConversionUtils.extractParseResult(javaParser.parseBodyDeclaration(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex3 ) {
@@ -224,7 +225,7 @@ public class ConvertJavaToJavascript {
         }
 
         try {
-            Statement parsed = com.github.javaparser.JavaParser.parseBlock(javasrc);
+            Statement parsed = ConversionUtils.extractParseResult(javaParser.parseBlock(javasrc));
             return doConvert("", parsed);
         } catch ( ParseException ex ) {
             throwMe =ex;
@@ -233,7 +234,7 @@ public class ConvertJavaToJavascript {
         try {
             String ssrc= utilMakeClass(javasrc);
             ByteArrayInputStream ins= new ByteArrayInputStream( ssrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= com.github.javaparser.JavaParser.parse(ins,Charset.forName("UTF-8"));
+            CompilationUnit unit= javaParser.parse(ins,Charset.forName("UTF-8"));
             String src= doConvert( "", unit );
             src= utilUnMakeClass(src);
             
@@ -381,9 +382,6 @@ public class ConvertJavaToJavascript {
             case "ReferenceType":
                 result= doConvertReferenceType(indent,(ReferenceType)n);
                 break;
-            case "MultiTypeParameter":
-                result= doConvertMultiTypeParameter(indent,(MultiTypeParameter)n);
-                break;
             case "ThrowStmt":
                 result= doConvertThrowStmt(indent,(ThrowStmt)n);
                 break;
@@ -479,8 +477,10 @@ public class ConvertJavaToJavascript {
                 }
             }
             if ( n instanceof ImportDeclaration ) {
-                javaImports.put(((ImportDeclaration)n).getName().getName(), false );
-                javaImportDeclarations.put(((ImportDeclaration)n).getName().getName(), (ImportDeclaration)n );
+                // TODO: should we get the full import path or just the identifier (last segment)?
+                String importName = ((ImportDeclaration)n).getName().asString();
+                javaImports.put(importName, false );
+                javaImportDeclarations.put(importName, (ImportDeclaration)n );
             } else {
                 sb.append( doConvert( "", n ) ).append("\n");
             }
@@ -692,10 +692,10 @@ public class ConvertJavaToJavascript {
     private boolean hasMain= false;
     
     // Constants
-    private static final ReferenceType STRING_TYPE = ASTHelper.createReferenceType( "String", 0 );
+    private static final ReferenceType STRING_TYPE = new ClassOrInterfaceType( "String" );
     private static final ClassOrInterfaceType STRING_TYPE2 = new ClassOrInterfaceType("String");
     
-    private static final AnnotationExpr DEPRECATED = new MarkerAnnotationExpr( new NameExpr("Deprecated") );
+    private static final AnnotationExpr DEPRECATED = new MarkerAnnotationExpr("Deprecated");
     
     /*** end, internal parsing state ***/
 
@@ -737,13 +737,14 @@ public class ConvertJavaToJavascript {
         this.unittest = unittest;
     }
  
-    private static String utilRewriteComments(String indent, Comment comments ) {
-        return utilRewriteComments( indent, comments, false );
+    private static String utilRewriteComments(String indent, Optional<Comment> commentsOptional ) {
+        return utilRewriteComments( indent, commentsOptional, false );
     }
     
     // Utilities
-    private static String utilRewriteComments(String indent, Comment comments, boolean docs ) {
-        if ( comments==null ) return "";
+    private static String utilRewriteComments(String indent, Optional<Comment> commentsOptional, boolean docs ) {
+        if ( commentsOptional==null || !commentsOptional.isPresent()) return "";
+        Comment comments = commentsOptional.get();
         StringBuilder b= new StringBuilder();
         if ( docs ) b.append(indent).append("/**\n");
         String[] ss= comments.getContent().split("\n");
@@ -766,7 +767,7 @@ public class ConvertJavaToJavascript {
     private String doConvertClassOrInterfaceDeclaration(String indent, ClassOrInterfaceDeclaration classOrInterfaceDeclaration) {
         StringBuilder sb= new StringBuilder();
         
-        String name = classOrInterfaceDeclaration.getName();
+        String name = classOrInterfaceDeclaration.getName().asString();
         
         boolean makeInnerOuter= false;
         
@@ -817,11 +818,11 @@ public class ConvertJavaToJavascript {
             String className;
             className= name;
             
-            if ( classOrInterfaceDeclaration.getExtends()!=null && classOrInterfaceDeclaration.getExtends().size()==1 ) { 
-                String extendName= doConvert( "", classOrInterfaceDeclaration.getExtends().get(0) );
+            if ( classOrInterfaceDeclaration.getExtendedTypes().size()==1 ) { 
+                String extendName= doConvert( "", classOrInterfaceDeclaration.getExtendedTypes().get(0) );
                 sb.append( indent ).append("class " ).append( className ).append(" extends " ).append(extendName).append(" {\n");
-            } else if ( classOrInterfaceDeclaration.getImplements()!=null && classOrInterfaceDeclaration.getImplements().size()==1 ) { 
-                List<ClassOrInterfaceType> impls= classOrInterfaceDeclaration.getImplements();
+            } else if ( !classOrInterfaceDeclaration.getImplementedTypes().isEmpty() && classOrInterfaceDeclaration.getImplementedTypes().size()==1 ) { 
+                List<ClassOrInterfaceType> impls= classOrInterfaceDeclaration.getImplementedTypes();
                 StringBuilder implementsName= new StringBuilder( doConvert( "", impls.get(0) ) );
                 for ( int i=1; i<impls.size(); i++ ) {
                     implementsName.append(",").append( doConvert( "", impls.get(i) ) );
@@ -835,11 +836,11 @@ public class ConvertJavaToJavascript {
             // https://github.com/jbfaden/JavaJythonConverter/issues/5
             classOrInterfaceDeclaration.getChildNodes().forEach((n) -> {
                 if ( n instanceof MethodDeclaration ) {
-                    classMethods.put( ((MethodDeclaration) n).getName(), classOrInterfaceDeclaration );
-                    getCurrentScopeMethods().put(((MethodDeclaration) n).getName(),(MethodDeclaration)n );
+                    classMethods.put( ((MethodDeclaration) n).getName().asString(), classOrInterfaceDeclaration );
+                    getCurrentScopeMethods().put(((MethodDeclaration) n).getName().asString(),(MethodDeclaration)n );
                 } else if ( n instanceof ClassOrInterfaceDeclaration ) {
                     ClassOrInterfaceDeclaration coid= (ClassOrInterfaceDeclaration)n;
-                    getCurrentScope().put( coid.getName(), new ClassOrInterfaceType(coid.getName()) );
+                    getCurrentScope().put( coid.getNameAsString(), new ClassOrInterfaceType(coid.getNameAsString()) );
                 }
             });
             
@@ -847,7 +848,7 @@ public class ConvertJavaToJavascript {
             Map<String,Node> nn= new HashMap<>();
             for ( Node n: classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof ClassOrInterfaceType ) {
-                    String name1= ((ClassOrInterfaceType)n).getName();
+                    String name1= ((ClassOrInterfaceType)n).getName().asString();
                     if ( nn.containsKey(name1) ) {
                         sb.append(indent).append(s4).append("// J2J: Name is used twice in class: ")
                                 .append(className).append(" ").append(name1).append("\n");
@@ -855,7 +856,7 @@ public class ConvertJavaToJavascript {
                     nn.put( name1, n );
                 } else if ( n instanceof FieldDeclaration ) {
                     for ( VariableDeclarator vd : ((FieldDeclaration)n).getVariables() ) {
-                        String name1= vd.getId().getName();
+                        String name1= vd.getNameAsString();
                         if ( nn.containsKey(name1) ) {
                             sb.append(indent).append(s4).append("// J2J: Name is used twice in class: ")
                                 .append(className).append(" ").append(name1).append("\n");
@@ -869,7 +870,7 @@ public class ConvertJavaToJavascript {
                             continue;
                         }
                     }
-                    String name1= md.getName();
+                    String name1= md.getName().asString();
                     if ( nn.containsKey(name1) ) {
                             sb.append(indent).append(s4).append("// J2J: Name is used twice in class: ")
                                 .append(className).append(" ").append(name1).append("\n");
@@ -882,8 +883,6 @@ public class ConvertJavaToJavascript {
             
             for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof ClassOrInterfaceType ) {
-                    // skip this strange node
-                } else if ( n instanceof EmptyMemberDeclaration ) {
                     // skip this strange node
                 } else if ( n instanceof ConstructorDeclaration ) {
                     if ( unittest ) {
@@ -909,9 +908,9 @@ public class ConvertJavaToJavascript {
                 sb.append("test = new ").append(classOrInterfaceDeclaration.getName()).append("();\n");
                 for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                     if ( n instanceof MethodDeclaration 
-                            && ((MethodDeclaration)n).getName().startsWith("test") 
-                            && ((MethodDeclaration)n).getParameters()==null ) {
-                        sb.append("test.").append(((MethodDeclaration) n).getName()).append("();\n");
+                            && ((MethodDeclaration)n).getNameAsString().startsWith("test") 
+                            && ((MethodDeclaration)n).getParameters().isEmpty() ) {
+                        sb.append("test.").append(((MethodDeclaration) n).getNameAsString()).append("();\n");
                     }
                 }
             }
@@ -936,19 +935,19 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertMethodDeclaration(String indent, MethodDeclaration methodDeclaration) {
-        boolean isStatic= ModifierSet.isStatic(methodDeclaration.getModifiers() );
+        boolean isStatic= ConversionUtils.isStaticMethod(methodDeclaration);
         
         if ( onlyStatic && !isStatic ) {
             return "";
         } else if ( isStatic ) {
-            if ( methodDeclaration.getName().equals("main") ) {
+            if ( methodDeclaration.getName().asString().equals("main") ) {
                 hasMain= true;
             }
         }
         
         if ( methodDeclaration.getAnnotations()!=null ) {
             for ( AnnotationExpr a : methodDeclaration.getAnnotations() ) {
-                if ( a.getName().getName().equals("Deprecated") ) {
+                if ( a.getName().getName().asString().equals("Deprecated") ) {
                     return "";
                 }
             }
@@ -964,7 +963,7 @@ public class ConvertJavaToJavascript {
             //sb.append( indent ).append( "@staticmethod\n" );
         }
         
-        String methodName= methodDeclaration.getName();
+        String methodName= methodDeclaration.getName().asString();
         if ( isStatic ) {
             sb.append( indent ).append("static ").append( methodName ) .append("(");
         } else {
@@ -976,7 +975,7 @@ public class ConvertJavaToJavascript {
 
         if ( methodDeclaration.getParameters()!=null ) {
             for ( Parameter p: methodDeclaration.getParameters() ) { 
-                String name= p.getId().getName();
+                String name= p.getName().asString();
                 String pythonParameterName;
                 pythonParameterName= name;
 
@@ -1049,25 +1048,26 @@ public class ConvertJavaToJavascript {
     private String doConvertVariableDeclarationExpr(String indent, VariableDeclarationExpr variableDeclarationExpr) {
         StringBuilder b= new StringBuilder();
         
-        for ( int i=0; i<variableDeclarationExpr.getVars().size(); i++ ) {
+        for ( int i=0; i<variableDeclarationExpr.getVariables().size(); i++ ) {
             if ( i>0 ) b.append("\n");
-            VariableDeclarator v= variableDeclarationExpr.getVars().get(i);
-            String s= v.getId().getName();
-             if ( v.getInit()!=null && v.getInit().toString().startsWith("Logger.getLogger") ) {
+            VariableDeclarator v= variableDeclarationExpr.getVariables().get(i);
+            String s= v.getNameAsString();
+             if ( v.getInitializer().isPresent() && v.getInitializer().get().toString().startsWith("Logger.getLogger") ) {
                 //addLogger();
-                localVariablesStack.peek().put(s,ASTHelper.createReferenceType("Logger",0) );
+                localVariablesStack.peek().put(s,new ClassOrInterfaceType("Logger") );
                 return indent + "// J2J: "+variableDeclarationExpr.toString().trim();
             }
-            if ( v.getInit()!=null 
-                    && ( v.getInit() instanceof ArrayInitializerExpr ) 
+            if ( v.getInitializer().isPresent() 
+                    && ( v.getInitializer().get() instanceof ArrayInitializerExpr ) 
                     && ( variableDeclarationExpr.getType() instanceof PrimitiveType ) ) {
-                Type t= ASTHelper.createReferenceType( ((PrimitiveType)variableDeclarationExpr.getType()), 1 );
+                Type t= new ArrayType(((PrimitiveType)variableDeclarationExpr.getType()));
+                // TODO: could we also just v.getType() for t here?
                 localVariablesStack.peek().put( s, t );
             } else {
-                localVariablesStack.peek().put( s, variableDeclarationExpr.getType() );
+                localVariablesStack.peek().put( s, v.getType() );
             }
-            if ( v.getInit()!=null ) {
-                b.append( indent ).append("var ").append(s).append(" = ").append(doConvert("",v.getInit()) );
+            if ( v.getInitializer().isPresent() ) {
+                b.append( indent ).append("var ").append(s).append(" = ").append(doConvert("",v.getInitializer().get()) );
             } else {
                 b.append( indent ).append("var ").append(s);
             }
@@ -1078,37 +1078,27 @@ public class ConvertJavaToJavascript {
     private String doConvertForStmt(String indent, ForStmt forStmt) {
         StringBuilder b= new StringBuilder();
         localVariablesStack.push( new HashMap<>(localVariablesStack.peek()) );
-        
-        List<Expression> init = forStmt.getInit();
-        VariableDeclarationExpr init1= null;
-        VariableDeclaratorId v=null;
-        if ( init!=null && init.size()==1 && init.get(0) instanceof VariableDeclarationExpr ) {
-            init1= (VariableDeclarationExpr)init.get(0);
-            if (init1.getVars().size()!=1 ) {
-                init1= null;
-            } else {
-                v= (init1.getVars().get(0)).getId();
-            }
-        }
-        BinaryExpr compare= forStmt.getCompare() instanceof BinaryExpr ? ((BinaryExpr)forStmt.getCompare()) : null;
+
+        BinaryExpr compare= (forStmt.getCompare().isPresent() && forStmt.getCompare().get() instanceof BinaryExpr) ? ((BinaryExpr)forStmt.getCompare().get()) : null;
         List<Expression> update= forStmt.getUpdate();
         UnaryExpr update1= null;
         if ( update.size()==1 && update.get(0) instanceof UnaryExpr ) {
             update1= (UnaryExpr)update.get(0);
-            if ( !(update1.getOperator()==UnaryExpr.Operator.posIncrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preIncrement 
-                    || update1.getOperator()==UnaryExpr.Operator.posDecrement 
-                    || update1.getOperator()==UnaryExpr.Operator.preDecrement  ) ) {
+            if ( !(update1.getOperator()==UnaryExpr.Operator.POSTFIX_INCREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_INCREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.POSTFIX_DECREMENT 
+                    || update1.getOperator()==UnaryExpr.Operator.PREFIX_DECREMENT  ) ) {
                 update1= null;
             }
         }
         
         StringBuilder sinit=  new StringBuilder();
-        forStmt.getInit().forEach((e) -> {
+        forStmt.getInitialization().forEach((e) -> {
             sinit.append(",").append( doConvert( "", e ) );
         });
         
-        String scompare= doConvert( "", forStmt.getCompare() );
+        // TODO: avoid dying here if compare not present?
+        String scompare= doConvert( "", forStmt.getCompare().get() );
         StringBuilder sincrement= new StringBuilder();
         forStmt.getUpdate().forEach((e) -> {
             sincrement.append(",").append( doConvert( "", e ) );
@@ -1136,19 +1126,19 @@ public class ConvertJavaToJavascript {
         AssignExpr.Operator operator= assign.getOperator();
         
         switch (operator) {
-            case minus:
+            case MINUS:
                 return indent + target + " -= " + doConvert( "", assign.getValue() );
-            case plus:
+            case PLUS:
                 return indent + target + " += " + doConvert( "", assign.getValue() );
-            case star:
+            case MULTIPLY:
                 return indent + target + " *= " + doConvert( "", assign.getValue() );
-            case slash:
+            case DIVIDE:
                 return indent + target + " /= " + doConvert( "", assign.getValue() );
-            case or:
+            case BINARY_OR:
                 return indent + target + " |= " + doConvert( "", assign.getValue() );
-            case and:
+            case BINARY_AND:
                 return indent + target + " &= " + doConvert( "", assign.getValue() );
-            case assign:
+            case ASSIGN:
                 return indent + target + " = " + doConvert( "", assign.getValue() );
             default:
                 return indent + target + " ??? " + doConvert( "", assign.getValue() ) + " (J2J AssignExpr not supported)";
@@ -1156,14 +1146,13 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertNameExpr(String indent, NameExpr nameExpr) {
-        nameExpr.getBeginLine();
-        String name= nameExpr.getName();
+        String name= nameExpr.getName().asString();
         if ( getCurrentScope().containsKey(name) ) {
             if ( localVariablesStack.peek().containsKey(name) ) {
                 return name;
             } else if ( getCurrentScopeFields().containsKey(name) ) {
                 FieldDeclaration decl= getCurrentScopeFields().get(name); // The problem is Java will figure out the scope, JavaScript needs the class name
-                if ( ModifierSet.isStatic( decl.getModifiers() ) ) {
+                if ( ConversionUtils.isStaticField(decl) ) {
                     return theClassName + "." +nameExpr.getName();
                 } else {
                     return "this." + name;
@@ -1173,7 +1162,7 @@ public class ConvertJavaToJavascript {
             }
         } else if ( getCurrentScopeFields().containsKey(name) ) {
             FieldDeclaration decl = getCurrentScopeFields().get(name);
-            boolean isStatic= ModifierSet.isStatic(decl.getModifiers() );
+            boolean isStatic= ConversionUtils.isStaticField(decl);
             if ( isStatic ) {
                 return indent + theClassName + "." + name; //TODO: usually correct, nested classes.
             } else {
@@ -1195,9 +1184,9 @@ public class ConvertJavaToJavascript {
         if ( exprType==null ) {
             return false;
         }
-        return exprType.equals(ASTHelper.INT_TYPE)
-                || exprType.equals(ASTHelper.LONG_TYPE) 
-                || exprType.equals(ASTHelper.SHORT_TYPE );
+        return exprType.equals(new PrimitiveType(Primitive.INT))
+                || exprType.equals(new PrimitiveType(Primitive.LONG)) 
+                || exprType.equals(new PrimitiveType(Primitive.SHORT) );
     }
 
     /**
@@ -1210,7 +1199,7 @@ public class ConvertJavaToJavascript {
         if ( exprType==null ) {
             return false;
         }
-        return exprType.equals(STRING_TYPE) || exprType.equals(ASTHelper.CHAR_TYPE);
+        return exprType.equals(STRING_TYPE) || exprType.equals(new PrimitiveType(Primitive.CHAR));
     }
         
     /**
@@ -1223,12 +1212,12 @@ public class ConvertJavaToJavascript {
         if ( leftType!=null && leftType.equals(rightType) ) {
             return leftType;
         }
-        if ( ( leftType==ASTHelper.DOUBLE_TYPE || leftType==ASTHelper.FLOAT_TYPE ) 
-            && ( isIntegerType(rightType) || rightType==ASTHelper.BYTE_TYPE ) ) {
+        if ( ( leftType==new PrimitiveType(Primitive.DOUBLE) || leftType==new PrimitiveType(Primitive.FLOAT) ) 
+            && ( isIntegerType(rightType) || rightType==new PrimitiveType(Primitive.BYTE) ) ) {
             return leftType;
         }
-        if ( ( rightType==ASTHelper.DOUBLE_TYPE || rightType==ASTHelper.FLOAT_TYPE ) 
-            && ( isIntegerType(leftType) || leftType==ASTHelper.BYTE_TYPE ) ) {
+        if ( ( rightType==new PrimitiveType(Primitive.DOUBLE) || rightType==new PrimitiveType(Primitive.FLOAT) ) 
+            && ( isIntegerType(leftType) || leftType==new PrimitiveType(Primitive.BYTE) ) ) {
             return rightType;
         }
         return null;
@@ -1241,9 +1230,9 @@ public class ConvertJavaToJavascript {
      */
     private Type guessType( Expression clas ) {
         if ( clas instanceof NameExpr ) {
-            String clasName= ((NameExpr)clas).getName();
+            String clasName= ((NameExpr)clas).getName().asString();
             if ( Character.isUpperCase(clasName.charAt(0)) ) { // Yup, we're assuming that upper case refers to a class
-                return ASTHelper.createReferenceType( clasName,0 );
+                new ClassOrInterfaceType( clasName );
             } else if ( localVariablesStack.peek().containsKey(clasName) ) {
                 return localVariablesStack.peek().get(clasName);
             } else if ( getCurrentScope().containsKey(clasName) ) {
@@ -1262,17 +1251,17 @@ public class ConvertJavaToJavascript {
             BinaryExpr be= ((BinaryExpr)clas);
             Type leftType= guessType( be.getLeft() );
             Type rightType= guessType( be.getRight() );
-            if ( be.getOperator()==BinaryExpr.Operator.and ||
-                    be.getOperator()==BinaryExpr.Operator.or || 
-                    be.getOperator()==BinaryExpr.Operator.equals ||
-                    be.getOperator()==BinaryExpr.Operator.notEquals ||
-                    be.getOperator()==BinaryExpr.Operator.greater ||
-                    be.getOperator()==BinaryExpr.Operator.greaterEquals ||
-                    be.getOperator()==BinaryExpr.Operator.less ||
-                    be.getOperator()==BinaryExpr.Operator.lessEquals ) {
-                return ASTHelper.BOOLEAN_TYPE;
+            if ( be.getOperator()==BinaryExpr.Operator.AND ||
+                    be.getOperator()==BinaryExpr.Operator.OR || 
+                    be.getOperator()==BinaryExpr.Operator.EQUALS ||
+                    be.getOperator()==BinaryExpr.Operator.NOT_EQUALS ||
+                    be.getOperator()==BinaryExpr.Operator.GREATER ||
+                    be.getOperator()==BinaryExpr.Operator.GREATER_EQUALS ||
+                    be.getOperator()==BinaryExpr.Operator.LESS||
+                    be.getOperator()==BinaryExpr.Operator.LESS_EQUALS) {
+                return new PrimitiveType(Primitive.BOOLEAN);
             }
-            if ( be.getOperator()==BinaryExpr.Operator.plus ) { // we automatically convert ints to strings.
+            if ( be.getOperator()==BinaryExpr.Operator.PLUS ) { // we automatically convert ints to strings.
                 if ( ( leftType!=null && leftType.equals(STRING_TYPE) ) ||
                         ( rightType!=null && rightType.equals(STRING_TYPE) ) ) {
                     return STRING_TYPE;
@@ -1295,39 +1284,38 @@ public class ConvertJavaToJavascript {
                 return null;
             }
         } else if ( clas instanceof IntegerLiteralExpr ) {
-            return ASTHelper.INT_TYPE;
+            return new PrimitiveType(Primitive.INT);
         } else if ( clas instanceof CharLiteralExpr ) {
-            return ASTHelper.CHAR_TYPE;
+            return new PrimitiveType(Primitive.CHAR);
         } else if ( clas instanceof LongLiteralExpr ) {
-            return ASTHelper.LONG_TYPE;
+            return new PrimitiveType(Primitive.LONG);
         } else if ( clas instanceof DoubleLiteralExpr ) {
-            return ASTHelper.DOUBLE_TYPE;
+            return new PrimitiveType(Primitive.DOUBLE);
         } else if ( clas instanceof StringLiteralExpr ) {
             return STRING_TYPE;
         } else if ( clas instanceof MethodCallExpr ) {
             MethodCallExpr mce= (MethodCallExpr)clas;
             Type scopeType=null;
-            if ( mce.getScope()!=null ) scopeType= guessType(mce.getScope());
+            if ( mce.getScope().isPresent() ) scopeType= guessType(mce.getScope().get());
             MethodDeclaration md= getCurrentScopeMethods().get(mce.getName());
             if ( md!=null ) {
                 return md.getType();
             }
             if ( scopeType!=null ) {
                 if (  scopeType.toString().equals("Pattern") ) {
-                    if ( mce.getName().equals("matcher") ) {
-                        return ASTHelper.createReferenceType("Matcher", 0);
-                    } else if ( mce.getName().equals("quote" ) ) {
+                    if ( mce.getName().asString().equals("matcher") ) {
+                        return new ClassOrInterfaceType("Matcher");
+                    } else if ( mce.getName().asString().equals("quote" ) ) {
                         return STRING_TYPE;
-                    } else if ( mce.getName().equals("split") ) {
-                        return ASTHelper.createReferenceType("String", 1);
+                    } else if ( mce.getName().asString().equals("split") ) {
+                        return new ArrayType(new ClassOrInterfaceType("String"));
                     }
                 } else if ( scopeType.toString().equals("StringBuilder") ) {
-                    switch ( mce.getName() ) {
-                        case "toString":
+                    if ( mce.getNameAsString().equals("toString") ) {
                             return STRING_TYPE;
                     }
                 } else if ( scopeType.toString().equals("String") ) {
-                    switch ( mce.getName() ) {
+                    switch ( mce.getNameAsString() ) {
                         case "substring": 
                         case "trim": 
                         case "valueOf": 
@@ -1339,19 +1327,19 @@ public class ConvertJavaToJavascript {
                         case "toUpperCase": 
                             return STRING_TYPE;
                         case "length": 
-                            return ASTHelper.INT_TYPE;
+                            return new PrimitiveType(Primitive.INT);
                         case "charAt":
-                            return ASTHelper.CHAR_TYPE;
+                            return new PrimitiveType(Primitive.CHAR);
                     }
                 } else if ( scopeType.toString().equals("Arrays") ) {
-                    switch ( mce.getName() ) {
+                    switch ( mce.getNameAsString() ) {
                         case "copyOfRange":
                             return guessType( mce.getArguments().get(0) );
                     }
                 }
             }
-            switch ( mce.getName() ) { // TODO: consider t
-                case "charAt": return ASTHelper.CHAR_TYPE;
+            switch ( mce.getNameAsString() ) { // TODO: consider t
+                case "charAt": return new PrimitiveType(Primitive.CHAR);
                 case "copyOfRange": return guessType( mce.getArguments().get(0) );
             }
         }
@@ -1383,83 +1371,84 @@ public class ConvertJavaToJavascript {
         
         if ( b.getLeft() instanceof MethodCallExpr && b.getRight() instanceof IntegerLiteralExpr ) {
             MethodCallExpr mce= (MethodCallExpr)b.getLeft();
-            if ( mce.getName().equals("compareTo") 
+            if ( mce.getName().asString().equals("compareTo") 
                     && ((IntegerLiteralExpr)b.getRight()).toString().equals("0") ) {
                 Expression a0= mce.getArguments().get(0);
+                // TODO: avoid duplication below.
                 if ( null!=b.getOperator() ) switch (b.getOperator()) {
-                    case greater:
-                        return doConvert("",mce.getScope()) + " > " + doConvert("",a0);
-                    case greaterEquals:
-                        return doConvert("",mce.getScope()) + " >= " + doConvert("",a0);
-                    case less:
-                        return doConvert("",mce.getScope()) + " < " + doConvert("",a0);
-                    case lessEquals:
-                        return doConvert("",mce.getScope()) + " <= " + doConvert("",a0);
-                    case equals:
-                        return doConvert("",mce.getScope()) + " == " + doConvert("",a0);
+                    case GREATER:
+                        return doConvert("",mce.getScope().get()) + " > " + doConvert("",a0);
+                    case GREATER_EQUALS:
+                        return doConvert("",mce.getScope().get()) + " >= " + doConvert("",a0);
+                    case LESS:
+                        return doConvert("",mce.getScope().get()) + " < " + doConvert("",a0);
+                    case LESS_EQUALS:
+                        return doConvert("",mce.getScope().get()) + " <= " + doConvert("",a0);
+                    case EQUALS:
+                        return doConvert("",mce.getScope().get()) + " == " + doConvert("",a0);
                     default:
                         break;
                 }
             }
         }
         BinaryExpr.Operator op= b.getOperator();
-        if (  rightType!=null && rightType.equals(ASTHelper.CHAR_TYPE) && left.startsWith("(") && left.endsWith(")") ) {
+        if (  rightType!=null && rightType.equals(new PrimitiveType(Primitive.CHAR)) && left.startsWith("(") && left.endsWith(")") ) {
             left= left.substring(4,left.length()-1);
         }
         
         if ( leftType!=null && rightType!=null ) {
-            if ( leftType.equals(ASTHelper.CHAR_TYPE) && rightType.equals(ASTHelper.INT_TYPE) ) {
+            if ( leftType.equals(new PrimitiveType(Primitive.CHAR)) && rightType.equals(new PrimitiveType(Primitive.INT)) ) {
                 left= left + ".charCodeAt(0)";
             }
-            if ( leftType.equals(ASTHelper.INT_TYPE) && rightType.equals(ASTHelper.CHAR_TYPE) ) {
+            if ( leftType.equals(new PrimitiveType(Primitive.INT)) && rightType.equals(new PrimitiveType(Primitive.CHAR)) ) {
                 left= left + ".charCodeAt(0)";
             }
             if ( rightType.equals(STRING_TYPE) 
                     && leftType instanceof PrimitiveType 
-                    && !leftType.equals(ASTHelper.CHAR_TYPE) ) {
+                    && !leftType.equals(new PrimitiveType(Primitive.CHAR)) ) {
                 //left= "("+left+")";
             }
             if ( leftType.equals(STRING_TYPE) 
                     && rightType instanceof PrimitiveType 
-                    && !rightType.equals(ASTHelper.CHAR_TYPE) ) {
+                    && !rightType.equals(new PrimitiveType(Primitive.CHAR)) ) {
                 //right= "("+right+")";
             }
         }
         
         if ( leftType!=null && !( b.getRight() instanceof NullLiteralExpr )
-                && leftType.equals(ASTHelper.createReferenceType("String", 0)) && rightType==null ) {
+                && leftType.equals(new ClassOrInterfaceType("String")) && rightType==null ) {
             right= "("+right+")";
         }
         
         switch (op) {
-            case plus:
+            case PLUS:
                 return left + " + " + right;
-            case minus:
+            case MINUS:
                 return left + " - " + right;
-            case divide:
+            case DIVIDE:
                 if ( isIntegerType( leftType ) && isIntegerType( rightType ) ) {
                     return "Math.trunc(" +left + " / " + right + ")";
                 } else {
                     return left + " / " + right;
                 }
-            case times:
+            case MULTIPLY:
                 return left + " * " + right;
-            case greater:
+            case GREATER:
                 return left + " > " + right;
-            case less:
+            case LESS:
                 return left + " < " + right;
-            case greaterEquals:
+            case GREATER_EQUALS:
                 return left + " >= " + right;                
-            case lessEquals:
+            case LESS_EQUALS:
                 return left + " <= " + right;
-            case and:
+            case AND:
                 return left + " && " + right;
-            case or:
+            case OR:
                 return left + " || " + right;
-            case equals:
+            case EQUALS:
                 if ( right.equals("null") ) {
                     return left + " === undefined || " + left + " === " + right;
-                } else if ( ASTHelper.INT_TYPE.equals(rightType) ) {
+                } else if ( new PrimitiveType(Primitive.INT).equals(rightType) ) {
                     return left + " === " + right;
                 } else {
                     if ( utilIsAsciiString(b.getLeft()) && utilIsAsciiString(b.getRight()) ) {
@@ -1468,10 +1457,10 @@ public class ConvertJavaToJavascript {
                         return left + " == " + right;
                     }
                 }
-            case notEquals:
+            case NOT_EQUALS:
                 if ( right.equals("null") ) {
                     return left + " !== undefined && " + left + " !== " + right;
-                } else if ( ASTHelper.INT_TYPE.equals(rightType) ) {
+                } else if ( new PrimitiveType(Primitive.INT).equals(rightType) ) {
                     return left + " !== " + right;
                 } else {
                     if ( utilIsAsciiString(b.getLeft()) && utilIsAsciiString(b.getRight()) ) {
@@ -1480,7 +1469,7 @@ public class ConvertJavaToJavascript {
                         return left + " !== " + right;
                     }
                 }
-            case remainder:
+            case REMAINDER:
                 return left + " % " + right;
             default:
                 throw new IllegalArgumentException("not supported: "+op);
@@ -1491,26 +1480,26 @@ public class ConvertJavaToJavascript {
     private String doConvertUnaryExpr(String indent, UnaryExpr unaryExpr) {
         String n= doConvert("",unaryExpr.getExpression()); 
         switch (unaryExpr.getOperator()) {
-            case preIncrement: {
+            case PREFIX_INCREMENT: {
                 return indent + "++" + n;
             }
-            case preDecrement: {
+            case PREFIX_DECREMENT: {
                 return indent + "--" + n;
             }
-            case posIncrement: {
+            case POSTFIX_INCREMENT: {
                 return indent + n + "++";
             }
-            case posDecrement: {
+            case POSTFIX_DECREMENT: {
                 return indent + n + "--";
             }
-            case positive: {
+            case PLUS: {
                 return indent + "+" + n;
             }
-            case negative: {
+            case MINUS: {
                 return indent + "-" + n;
             }
-            case not: {
-                if ( unaryExpr.getExpression() instanceof MethodCallExpr && ((MethodCallExpr)unaryExpr.getExpression()).getName().equals("equals") ) {
+            case LOGICAL_COMPLEMENT: {
+                if ( unaryExpr.getExpression() instanceof MethodCallExpr && ((MethodCallExpr)unaryExpr.getExpression()).getName().asString().equals("equals") ) {
                     if ( n.split("==").length==2 ) {
                         return indent + n.replaceAll("==","!="); // I will regret this some day.
                     } else {
@@ -1615,7 +1604,7 @@ public class ConvertJavaToJavascript {
      */
     private String doConvertMethodCallExpr(String indent, MethodCallExpr methodCallExpr) {
         Expression clas= methodCallExpr.getScope();
-        String name= methodCallExpr.getName();
+        String name= methodCallExpr.getName().asString();
         List<Expression> args= methodCallExpr.getArguments();
             
         if ( name==null ) {
@@ -1627,13 +1616,13 @@ public class ConvertJavaToJavascript {
          */
         String clasType=""; // = guessType(clas);  TODO: these should be merged
         if ( clas instanceof NameExpr ) {
-            String contextName= ((NameExpr)clas).getName(); // sb in sb.append, or String in String.format.
+            String contextName= ((NameExpr)clas).getName().asString(); // sb in sb.append, or String in String.format.
             Type contextType= localVariablesStack.peek().get(contextName); // allow local variables to override class variables.
             if ( contextType==null ) contextType= getCurrentScope().get(contextName);
             if ( Character.isUpperCase(contextName.charAt(0)) ) { // Yup, we're assuming that upper case refers to a class
                 clasType= contextName;
             } else if ( stringMethods.contains(name) 
-                    && ( contextType==null || contextType.equals(ASTHelper.createReferenceType("String", 0) )) ) {
+                    && ( contextType==null || contextType.equals(new ClassOrInterfaceType("String") )) ) {
                 clasType= "String";
             } else if ( contextType!=null ) {
                 Type t= contextType;
@@ -1647,7 +1636,7 @@ public class ConvertJavaToJavascript {
             clasType= "String";
         } else if ( stringMethods.contains(name) ) {
             if ( name.equals("format") ) {
-                if ( ASTHelper.createReferenceType("String", 0).equals(guessType( clas )) ) {
+                if ( new ClassOrInterfaceType("String").equals(guessType( clas )) ) {
                     clasType= "String";
                 }
             } else {
@@ -1895,7 +1884,7 @@ public class ConvertJavaToJavascript {
                         return indent + doConvert("",clas) + ".push("+doConvert("",args.get(0))+")";
                     }
                 case "remove":
-                    if ( guessType(args.get(0)).equals(ASTHelper.INT_TYPE) ) {
+                    if ( guessType(args.get(0)).equals(new PrimitiveType(Primitive.INT)) ) {
                         return indent + doConvert("",clas) + ".pop("+doConvert("",args.get(0))+")";
                     } else {
                         return indent + doConvert("",clas) + ".remove(" + doConvert("",args.get(0)) + ")";
@@ -1968,7 +1957,7 @@ public class ConvertJavaToJavascript {
         String s= doConvert( "", fieldAccessExpr.getScope() );
                 
         // test to see if this is an array and "length" of the array is accessed.
-        if ( fieldAccessExpr.getField().equals("length") ) {
+        if ( fieldAccessExpr.getName().asString().equals("length") ) {
             String inContext= s;
             if ( inContext.startsWith("this.") ) {
                 inContext= inContext.substring(5);
@@ -1983,12 +1972,12 @@ public class ConvertJavaToJavascript {
         }
         
         if ( onlyStatic && !classNameStack.isEmpty() && s.equals(classNameStack.peek()) ) {
-            return fieldAccessExpr.getField();
+            return fieldAccessExpr.getName().asString();
         } else if ( !classNameStack.isEmpty() && s.equals(classNameStack.peek()) ) {            
-            return doConvert("",fieldAccessExpr.getScope()) + "."+  fieldAccessExpr.getField();
+            return doConvert("",fieldAccessExpr.getScope()) + "."+  fieldAccessExpr.getName().asString();
         } else {
             if ( s.equals("Collections") ) {
-                String f= fieldAccessExpr.getField();
+                String f= fieldAccessExpr.getName().asString();
                 switch (f) {
                     case "EMPTY_MAP":
                         return indent + "new Map()";
@@ -2000,14 +1989,14 @@ public class ConvertJavaToJavascript {
                         break;
                 }
             }
-            return indent + s + "." + fieldAccessExpr.getField();
+            return indent + s + "." + fieldAccessExpr.getName().asString();
         }
 
     }
     
     private String doConvertArrayCreationExpr(String indent, ArrayCreationExpr arrayCreationExpr) {
-        if ( arrayCreationExpr.getInitializer()!=null ) {
-            return doConvert( indent, arrayCreationExpr.getInitializer() );
+        if ( arrayCreationExpr.getInitializer().isPresent() ) {
+            return doConvert( indent, arrayCreationExpr.getInitializer().get() );
         } else {
             if ( arrayCreationExpr.getDimensions()!=null && arrayCreationExpr.getDimensions().size()==1 ) {
                 Expression e1= arrayCreationExpr.getDimensions().get(0);
@@ -2027,8 +2016,8 @@ public class ConvertJavaToJavascript {
                     }
                 } else if ( e1 instanceof NameExpr && getCurrentScopeFields().containsKey(((NameExpr)e1).getName()) ) {
                     FieldDeclaration fd= getCurrentScopeFields().get(((NameExpr)e1).getName());
-                    if ( fd.getType().equals(ASTHelper.INT_TYPE) && ModifierSet.isStatic( fd.getModifiers() ) ) {
-                        int len= Integer.parseInt( fd.getVariables().get(0).getInit().toString() );
+                    if ( fd.getType().equals(new PrimitiveType(Primitive.INT)) && ConversionUtils.isStaticField(fd) ) {
+                        int len= Integer.parseInt( fd.getVariables().get(0).getInitializer().get().toString() );
                         if ( len>7 ) {
                             return "Array.apply(null, Array("+len + ")).map(function (x, i) { return 0; })";
                         } else {
@@ -2058,10 +2047,10 @@ public class ConvertJavaToJavascript {
     }    
 
     private String doConvertReturnStmt(String indent, ReturnStmt returnStmt) {
-        if ( returnStmt.getExpression()==null ) {
+        if ( !returnStmt.getExpression().isPresent() ) {
             return indent + "return;";
         } else {
-            return indent + "return " + doConvert("", returnStmt.getExpression()) + ";";
+            return indent + "return " + doConvert("", returnStmt.getExpression().get()) + ";";
         }        
     }
 
@@ -2072,16 +2061,17 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertIfStmt(String indent, IfStmt ifStmt) {
-        if ( ifStmt.getElseStmt()!=null ) {
+        if ( ifStmt.getElseStmt().isPresent() ) {
+            Statement elseStmt = ifStmt.getElseStmt().get();
             if ( ifStmt.getThenStmt() instanceof BlockStmt ) {
-                if ( ifStmt.getElseStmt() instanceof BlockStmt ) {
+                if ( elseStmt instanceof BlockStmt ) {
                     return indent + "if (" + doConvert("",ifStmt.getCondition()) +
                             ") {\n" + doConvert(indent+s4,ifStmt.getThenStmt() ) + indent + "} else "
-                            + "{\n" + doConvert(indent+s4,ifStmt.getElseStmt() ) + indent + "}\n";
+                            + "{\n" + doConvert(indent+s4,elseStmt ) + indent + "}\n";
                             
                 } else {
-                    if ( ifStmt.getElseStmt() instanceof IfStmt ) {
-                        String elseStuff= doConvert(indent,ifStmt.getElseStmt() ); // this will start with indent, but we remove it
+                    if ( elseStmt instanceof IfStmt ) {
+                        String elseStuff= doConvert(indent,elseStmt ); // this will start with indent, but we remove it
                         elseStuff= elseStuff.substring(indent.length());
                         return indent + "if (" + doConvert("",ifStmt.getCondition()) +
                             ") {\n" + doConvert(indent+s4,ifStmt.getThenStmt() ) + indent + "} else "
@@ -2089,17 +2079,17 @@ public class ConvertJavaToJavascript {
                     } else {
                         return indent + "if (" + doConvert("",ifStmt.getCondition()) +
                             ") {\n" + doConvert(indent+s4,ifStmt.getThenStmt() ) + indent + "} else "
-                            + "{\n" + doConvert(indent+s4,ifStmt.getElseStmt() ) + indent + "}\n";
+                            + "{\n" + doConvert(indent+s4,elseStmt ) + indent + "}\n";
                     }
                 }
-            } else if ( ifStmt.getElseStmt() instanceof BlockStmt || ifStmt.getElseStmt() instanceof IfStmt ) {
+            } else if ( elseStmt instanceof BlockStmt || elseStmt instanceof IfStmt ) {
                 return indent + "if (" + doConvert("",ifStmt.getCondition()) +
                             ") {\n" + doConvert(indent+s4,ifStmt.getThenStmt() ) + indent + "\n" + indent + "} else "
-                            + "{\n" + doConvert(indent+s4,ifStmt.getElseStmt() ) + indent + "}\n";
+                            + "{\n" + doConvert(indent+s4,elseStmt ) + indent + "}\n";
             } else {
                 return indent + "if (" + doConvert("",ifStmt.getCondition()) +
                     ") " + doConvert("",ifStmt.getThenStmt() ) + "" + 
-                    " else " + doConvert("",ifStmt.getElseStmt() );
+                    " else " + doConvert("",elseStmt );
             }
         } else {
             if ( ifStmt.getThenStmt() instanceof BlockStmt ) {
@@ -2122,7 +2112,7 @@ public class ConvertJavaToJavascript {
             if ( objectCreationExpr.getArguments()!=null ) {
                 if ( objectCreationExpr.getArguments().size()==1 ) {
                     Expression e= objectCreationExpr.getArguments().get(0);
-                    if ( ASTHelper.INT_TYPE.equals(guessType(e)) ) { // new StringBuilder(100);
+                    if ( new PrimitiveType(Primitive.INT).equals(guessType(e)) ) { // new StringBuilder(100);
                         return "\"\"";
                     } else {
                         return indent + utilAssertStr(e);
@@ -2151,24 +2141,24 @@ public class ConvertJavaToJavascript {
                     sb.append("*** // J2J: This is extended in an anonymous inner class ***");
                     return sb.toString();
                 } else {
-                    if ( objectCreationExpr.getType().getName().equals("HashMap") ) { 
+                    if ( objectCreationExpr.getType().getName().asString().equals("HashMap") ) { 
                         return indent + "new Map()";
-                    } else if ( objectCreationExpr.getType().getName().equals("ArrayList") ) { 
+                    } else if ( objectCreationExpr.getType().getName().asString().equals("ArrayList") ) { 
                         return indent + "new Array()";
-                    } else if ( objectCreationExpr.getType().getName().equals("HashSet") ) {
+                    } else if ( objectCreationExpr.getType().getName().asString().equals("HashSet") ) {
                         return indent + "new Set()"; 
                     } else {
                         if ( javaImports.keySet().contains( objectCreationExpr.getType().getName() ) ) {
                             javaImports.put( objectCreationExpr.getType().getName(), true );
                         }
-                        if ( objectCreationExpr.getType().getName().equals("String") ) {
+                        if ( objectCreationExpr.getType().getName().asString().equals("String") ) {
                             if ( objectCreationExpr.getArguments().size()==1 ) {
                                 Expression e= objectCreationExpr.getArguments().get(0);
                                 Type t= guessType(e);
                                 if ( t instanceof ReferenceType 
-                                        && t.equals(ASTHelper.createReferenceType(ASTHelper.CHAR_TYPE,1) ) ) {
+                                        && t.equals(new ArrayType(new PrimitiveType(Primitive.CHAR)) ) ) {
                                     return indent + doConvert("",e) + ".join( \"\" )";
-                                } else if ( t.equals(ASTHelper.createReferenceType("StringBuilder",0) ) ) {
+                                } else if ( t.equals(new ClassOrInterfaceType("StringBuilder") ) ) {
                                     return  doConvert("",e); // these are just strings.
                                 }
                             }
@@ -2181,7 +2171,7 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertFieldDeclaration(String indent, FieldDeclaration fieldDeclaration) {
-        boolean s= ModifierSet.isStatic( fieldDeclaration.getModifiers() ); 
+        boolean s= ConversionUtils.isStaticField(fieldDeclaration); 
         StringBuilder sb= new StringBuilder();
         
         List<VariableDeclarator> vv= fieldDeclaration.getVariables();
@@ -2189,25 +2179,24 @@ public class ConvertJavaToJavascript {
         if ( vv!=null ) {
             for ( VariableDeclarator v: vv ) {
                 VariableDeclaratorId id= v.getId();
-                String name= id.getName();
+                String name= id.getName().asString();
                 
-                if ( v.getInit()!=null && v.getInit().toString().startsWith("Logger.getLogger") ) {
-                    getCurrentScope().put( name, ASTHelper.createReferenceType("Logger", 0) );
+                if ( v.getInitializer().isPresent() && v.getInitializer().get().toString().startsWith("Logger.getLogger") ) {
+                    getCurrentScope().put( name, new ClassOrInterfaceType("Logger") );
                     //addLogger();
                     sb.append( indent ).append("// J2J: ").append(fieldDeclaration.toString());
                     continue;
                 }
                 
-                getCurrentScope().put( name,fieldDeclaration.getType() );
+                getCurrentScope().put( name,ConversionUtils.getFieldType(fieldDeclaration) );
                 getCurrentScopeFields().put( name,fieldDeclaration);
 
                 String modifiers= s ? "static " : "";
                 
-                if ( v.getInit()==null ) {
-                    sb.append( indent ).append(modifiers).append( name ).append(";\n");
+                if ( v.getInitializer().isPresent() ) {
+                    sb.append( indent ).append(modifiers).append(name).append(" = ").append( doConvert( "",v.getInitializer().get() ) ).append(";\n");
                 } else {
-                    sb.append( indent ).append(modifiers).append(name).append(" = ").append( doConvert( "",v.getInit() ) ).append(";\n");
-                    
+                    sb.append( indent ).append(modifiers).append( name ).append(";\n");
                 }
             }
         }
@@ -2220,7 +2209,7 @@ public class ConvertJavaToJavascript {
         b.append( doConvert("",switchStmt.getSelector()) ).append(") {\n");
         String nextIndent= indent + s4;
         String nextNextIndent = nextIndent + s4;
-        for ( SwitchEntryStmt ses: switchStmt.getEntries() ) {
+        for ( SwitchEntry ses: switchStmt.getEntries() ) {
             Expression label= ses.getLabel();
             String slabel;
             if ( label==null ) {
@@ -2291,11 +2280,11 @@ public class ConvertJavaToJavascript {
         sb.append(") {\n");
         if ( constructorDeclaration.getParameters()!=null ) {
             for ( Parameter p: constructorDeclaration.getParameters() ) { 
-                String name= p.getId().getName();
+                String name= p.getName().asString();
                 localVariablesStack.peek().put( name, p.getType() );
             }
         }
-        sb.append( doConvert(indent+s4,constructorDeclaration.getBlock()) );
+        sb.append( doConvert(indent+s4,constructorDeclaration.getBody()) );
         sb.append( indent ).append("}\n");
         
         return sb.toString();
@@ -2316,7 +2305,7 @@ public class ConvertJavaToJavascript {
                 sb.append(" // J2J: these must be combined\n");
             }
             
-            sb.append( doConvert( indent+s4, cc.getCatchBlock() ) );
+            sb.append( doConvert( indent+s4, cc.getBody() ) );
         }
         if ( tryStmt.getFinallyBlock()!=null ) {
             sb.append( indent ).append( "} finally {\n");
@@ -2324,10 +2313,6 @@ public class ConvertJavaToJavascript {
         }
         sb.append(indent).append("}\n");
         return sb.toString();
-    }
-
-    private String doConvertMultiTypeParameter(String indent, MultiTypeParameter multiTypeParameter) {
-        return indent + utilFormatTypeList( multiTypeParameter.getTypes() );
     }
 
     private String doConvertReferenceType(String indent, ReferenceType referenceType) {
@@ -2372,11 +2357,11 @@ public class ConvertJavaToJavascript {
         
         Type argType= guessType(castExpr.getExpression());
         if ( argType!=null ) {
-            if ( argType.equals( ASTHelper.DOUBLE_TYPE ) ) {
+            if ( argType.equals( new PrimitiveType(Primitive.DOUBLE) ) ) {
                 if ( type.equals("int") || type.equals("long") ) {
                     return indent + "Math.trunc( "+scastExpr+" )";
                 }
-            } else if ( argType.equals( ASTHelper.INT_TYPE ) ) {
+            } else if ( argType.equals( new PrimitiveType(Primitive.INT) ) ) {
                 if ( type.equals("chr") ) {
                     return indent + "String.fromCharCode( "+scastExpr+" )";
                 }
@@ -2420,7 +2405,7 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertForEachStmt(String indent, ForEachStmt ForEachStmt) {
-        String vv= ForEachStmt.getVariable().getVars().get(0).getId().getName();
+        String vv= ForEachStmt.getVariable().getVariables().get(0).getId().getName().asString();
         StringBuilder sb= new StringBuilder(indent);
         sb.append( doConvert( "", ForEachStmt.getIterable() ) );
         sb.append(".forEach( function ( ").append(vv).append(" ) {\n ");

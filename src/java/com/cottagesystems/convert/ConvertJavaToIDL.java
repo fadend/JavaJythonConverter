@@ -1,12 +1,9 @@
 
 package com.cottagesystems.convert;
 
+import com.cottagesystems.convert.ConversionUtils;
 import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParseProblemException;
-import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParseException;
-import com.github.javaparser.Position;
-import com.github.javaparser.Range;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
@@ -18,7 +15,6 @@ import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.InitializerDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.MultiTypeParameter;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AssignExpr;
@@ -33,7 +29,6 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.body.VariableDeclaratorId;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.ArrayAccessExpr;
@@ -130,37 +125,6 @@ public class ConvertJavaToIDL {
     private boolean onlyStatic = true;
     
     public static final String PROP_ONLYSTATIC = "onlyStatic";
-
-
-    private static boolean isStaticField(FieldDeclaration field) {
-        if (field == null) {
-            return false;
-        }
-        return field.getModifiers().contains(Modifier.staticModifier());
-    }
-
-    // TODO: avoid duplication between the isStatic methods.
-    private static boolean isStaticMethod(MethodDeclaration method) {
-        if (method == null) {
-            return false;
-        }
-        return method.getModifiers().contains(Modifier.staticModifier());
-    }
-
-    private static Type getFieldType(FieldDeclaration field) {
-        List<VariableDeclarator> variables = field.getVariables();
-        if (variables.size() != 1) {
-            throw new IllegalArgumentException("Expected exactly one variable for " + field.toString());
-        }
-        return variables.get(0).getType();
-    }
-
-    private static <T> T extractParseResult(ParseResult<T> result) {
-        if (result.isSuccessful()) {
-            return result.getResult().get();
-        }
-        throw new ParseProblemException(result.getProblems());
-    }
 
     /**
      * true indicates that only static methods are to be pulled out of the class.
@@ -449,7 +413,7 @@ public class ConvertJavaToIDL {
         ParseException throwMe;
         try {
             ByteArrayInputStream ins= new ByteArrayInputStream( javasrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
+            CompilationUnit unit= ConversionUtils.extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
             String src= doConvert( "", unit );
             if ( additionalImports!=null ) {
                 StringBuilder sb= new StringBuilder();
@@ -505,12 +469,13 @@ public class ConvertJavaToIDL {
                 numLinesIn= lines.length;
                         
                 int offset=0;
-                Expression parseExpression = extractParseResult(javaParser.parseExpression(javasrc));
+                Expression parseExpression = ConversionUtils.extractParseResult(javaParser.parseExpression(javasrc));
                 StringBuilder bb= new StringBuilder( doConvert( "", parseExpression ) );
                 int linesHandled=0;
-                while ( (linesHandled+parseExpression.getEndLine())<lines.length ) {
+                int endLine = ConversionUtils.getEndLine(parseExpression);
+                while ( (linesHandled+endLine)<lines.length ) {
                     int additionalLinesHandled=0;
-                    for ( int i=0; i<parseExpression.getEndLine(); i++ ) {
+                    for ( int i=0; i<endLine; i++ ) {
                         offset += lines[i].length() ;
                         offset += 1;
                         additionalLinesHandled++;
@@ -520,7 +485,8 @@ public class ConvertJavaToIDL {
                         break;
                     }
                     linesHandled+= additionalLinesHandled;
-                    parseExpression = extractParseResult(javaParser.parseExpression(javasrc.substring(offset)));
+                    parseExpression = ConversionUtils.extractParseResult(javaParser.parseExpression(javasrc.substring(offset)));
+                    endLine = ConversionUtils.getEndLine(parseExpression);
                     bb.append( "\n" ).append( doConvert( "", parseExpression ) );
                 }
                 String src= bb.toString();
@@ -548,7 +514,7 @@ public class ConvertJavaToIDL {
         
         try {
             if ( numLinesIn < 2 ) {
-                Statement parsed = extractParseResult(javaParser.parseStatement(javasrc));
+                Statement parsed = ConversionUtils.extractParseResult(javaParser.parseStatement(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex2) {
@@ -557,14 +523,14 @@ public class ConvertJavaToIDL {
 
         try {
             if ( numLinesIn < 2 ) {
-                BodyDeclaration parsed = extractParseResult(javaParser.parseBodyDeclaration(javasrc));
+                BodyDeclaration parsed = ConversionUtils.extractParseResult(javaParser.parseBodyDeclaration(javasrc));
                 return doConvert("", parsed);
             }
         } catch (ParseException ex3 ) {
             throwMe= ex3;
         }
         try {
-            Statement parsed = extractParseResult(javaParser.parseBlock(javasrc));
+            Statement parsed = ConversionUtils.extractParseResult(javaParser.parseBlock(javasrc));
             return doConvert("", parsed);
         } catch ( ParseException ex ) {
             throwMe =ex;
@@ -573,7 +539,7 @@ public class ConvertJavaToIDL {
         try {
             String ssrc= utilMakeClass(javasrc);
             ByteArrayInputStream ins= new ByteArrayInputStream( ssrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
+            CompilationUnit unit= ConversionUtils.extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
             String src= doConvert( "", unit );
             src= src.trim();
             
@@ -615,7 +581,7 @@ public class ConvertJavaToIDL {
         
         if ( b.getLeft() instanceof MethodCallExpr && b.getRight() instanceof IntegerLiteralExpr ) {
             MethodCallExpr mce= (MethodCallExpr)b.getLeft();
-            if ( mce.getName().equals("compareTo") 
+            if ( mce.getName().asString().equals("compareTo") 
                     && ((IntegerLiteralExpr)b.getRight()).toString().equals("0") ) {
                 if ( null!=b.getOperator() ) switch (b.getOperator()) {
                     case GREATER:
@@ -780,7 +746,7 @@ public class ConvertJavaToIDL {
             }
             if ( scopeType!=null ) {
                 if (  scopeType.toString().equals("Pattern") ) {
-                    if ( mce.getName().equals("matcher") ) {
+                    if ( mce.getName().asString().equals("matcher") ) {
                         return new ClassOrInterfaceType( "Matcher");
                     }
                 } else if ( scopeType.toString().equals("StringBuilder") ) {
@@ -1379,7 +1345,7 @@ public class ConvertJavaToIDL {
                     if ( mm==null ) {
                         return indent + m.getName() + "." + name + "("+ utilFormatExprList(args) +")";
                     } else {
-                        boolean isStatic= isStaticMethod(mm);
+                        boolean isStatic= ConversionUtils.isStaticMethod(mm);
                         if ( isStatic ) {
                             if ( mm.getType() instanceof com.github.javaparser.ast.type.VoidType ) {
                                 return indent + javaNameToIdlName( m.getName().toString() ) + "." + javaNameToIdlName( name ) + utilFormatExprList(",",args);
@@ -1585,9 +1551,10 @@ public class ConvertJavaToIDL {
             case "ReferenceType":
                 result= doConvertReferenceType(indent,(ReferenceType)n);
                 break;
-            case "MultiTypeParameter":
-                result= doConvertMultiTypeParameter(indent,(MultiTypeParameter)n);
-                break;
+            // TODO: replace MultiTypeParameters, which disappeared in the newer JavaParser version.
+            // case "MultiTypeParameter":
+            //     result= doConvertMultiTypeParameter(indent,(MultiTypeParameter)n);
+            //     break;
             case "ThrowStmt":
                 result= doConvertThrowStmt(indent,(ThrowStmt)n);
                 break;
@@ -1795,7 +1762,7 @@ public class ConvertJavaToIDL {
         //    System.err.println("here13331");
         //}
         if ( ifStmt.getCondition() instanceof MethodCallExpr && 
-                ((MethodCallExpr)ifStmt.getCondition()).getName().equals("isLoggable") ) {
+                ((MethodCallExpr)ifStmt.getCondition()).getName().asString().equals("isLoggable") ) {
             return indent + "; J2J: if "+ifStmt.getCondition() + " ... removed";
         }
         b.append(indent).append("if ");
@@ -1960,7 +1927,7 @@ public class ConvertJavaToIDL {
 //             QualifiedNameExpr qn= (QualifiedNameExpr)n;
 // //            sb.append( "; from " ).append( qn.getQualifier() ).append( " import " ).append( n.getName() );
 //         } else {
-//             String nn= n.getName();
+//             String nn= n.getName().asString();
 //             int i= nn.lastIndexOf(".");
 // //            sb.append( "; from " ).append( nn.substring(0,i) ).append( " import " ).append( nn.substring(i));
 //         }
@@ -1986,6 +1953,7 @@ public class ConvertJavaToIDL {
                 }
             }
             if ( n instanceof ImportDeclaration ) {
+                // TODO: should we get the full import path or just the identifier (last segment)?
                 String importName = ((ImportDeclaration)n).getName().asString();
                 javaImports.put(importName, false );
                 javaImportDeclarations.put(importName, (ImportDeclaration)n );
@@ -2079,7 +2047,7 @@ public class ConvertJavaToIDL {
             }
             
             FieldDeclaration field= stackFields.peek().get(fieldName);            
-            if (isStaticField(field)) {
+            if (ConversionUtils.isStaticField(field)) {
                 return indent + s + "_" + fieldName;
             } else {
                 return indent + s + "." + fieldName;
@@ -2098,39 +2066,25 @@ public class ConvertJavaToIDL {
         }
     }
 
-    /**
-     * Gets the first line represented by the node.
-     *
-     * @param node Node to examine.
-     * @return The line number or a negative number if unavailable.
-     */
-    private static int getBeginLine(Node node) {
-        Optional<Range> range = node.getRange();
-        if (!range.isPresent()) {
-            return -1;
-        }
-        return range.get().begin.line;
-    }
-
     private String doConvertUnaryExpr(String indent, UnaryExpr unaryExpr) {
          switch (unaryExpr.getOperator()) {
             case PREFIX_INCREMENT: {
-                additionalClasses.put("; J2J: increment used at line "+getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                additionalClasses.put("; J2J: increment used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
                 String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " + 1";
             }
             case PREFIX_DECREMENT: {
-                additionalClasses.put("; J2J: decrement used at line "+getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                additionalClasses.put("; J2J: decrement used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
                 String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " - 1";
             }
             case POSTFIX_INCREMENT: {
-                additionalClasses.put("; J2J: increment used at line "+getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                additionalClasses.put("; J2J: increment used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
                 String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " + 1";
             }
             case POSTFIX_DECREMENT: {
-                additionalClasses.put("; J2J: decrement used at line "+getBeginLine(unaryExpr)+", which needs human study.\n",true );
+                additionalClasses.put("; J2J: decrement used at line "+ConversionUtils.getBeginLine(unaryExpr)+", which needs human study.\n",true );
                 String n= doConvert("",unaryExpr.getExpression());
                 return indent + n + " = " + n + " - 1";
             }
@@ -2282,7 +2236,7 @@ public class ConvertJavaToIDL {
                             sb.append(indent).append("; J2J: Name is used twice in class: ")
                                 .append(pythonName).append(" ").append(name1).append("\n");
                         }
-                        getCurrentScope().put( name1, (getFieldType((FieldDeclaration)n) )); //TODO: Does Python and JavaScript have this?
+                        getCurrentScope().put( name1, (ConversionUtils.getFieldType((FieldDeclaration)n) )); //TODO: Does Python and JavaScript have this?
                         nn.put( name1, vd );
                     }
                     
@@ -2311,7 +2265,7 @@ public class ConvertJavaToIDL {
             
             for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                 if ( n instanceof FieldDeclaration ) {
-                    boolean isStatic= isStaticField((FieldDeclaration)n);
+                    boolean isStatic= ConversionUtils.isStaticField((FieldDeclaration)n);
                     for ( VariableDeclarator vd : ((FieldDeclaration)n).getVariables() ) {
                         String vname= vd.getName().asString();
                         
@@ -2416,7 +2370,7 @@ public class ConvertJavaToIDL {
     }
 
     private String doConvertMethodDeclaration(String indent, MethodDeclaration methodDeclaration) {
-        boolean isStatic= isStaticMethod(methodDeclaration);
+        boolean isStatic= ConversionUtils.isStaticMethod(methodDeclaration);
         
         if ( onlyStatic && !isStatic ) {
             return "";
@@ -2503,7 +2457,7 @@ public class ConvertJavaToIDL {
     }
     
     private String doConvertFieldDeclaration(String indent, FieldDeclaration fieldDeclaration) {
-        boolean s= isStaticField(fieldDeclaration); // TODO: static fields
+        boolean s= ConversionUtils.isStaticField(fieldDeclaration); // TODO: static fields
         
         if ( onlyStatic && !s ) {
             return "";
@@ -2530,11 +2484,11 @@ public class ConvertJavaToIDL {
                     continue;
                 }
                 
-                getCurrentScope().put( name,getFieldType(fieldDeclaration) );
+                getCurrentScope().put( name,ConversionUtils.getFieldType(fieldDeclaration) );
                 getCurrentScopeFields().put( name,fieldDeclaration);
 
                 if ( !v.getInitializer().isPresent() ) {
-                    String implicitDeclaration = utilImplicitDeclaration( getFieldType(fieldDeclaration) );
+                    String implicitDeclaration = utilImplicitDeclaration( ConversionUtils.getFieldType(fieldDeclaration) );
                     if ( implicitDeclaration!=null ) {
                         sb.append( indent ).append( pythonName ).append(" = ").append( implicitDeclaration ).append("\n");
                     } else {
@@ -2743,17 +2697,17 @@ public class ConvertJavaToIDL {
                     sb.append("*** ; J2J: This is extended in an anonymous inner class ***");
                     return sb.toString();
                 } else {
-                    if ( objectCreationExpr.getType().getName().equals("HashMap") ) { 
+                    if ( objectCreationExpr.getType().getName().asString().equals("HashMap") ) { 
                         return indent + "HASH()";
-                    } else if ( objectCreationExpr.getType().getName().equals("ArrayList") ) { 
+                    } else if ( objectCreationExpr.getType().getName().asString().equals("ArrayList") ) { 
                         return indent + "LIST()";
-                    } else if ( objectCreationExpr.getType().getName().equals("HashSet") ) {
+                    } else if ( objectCreationExpr.getType().getName().asString().equals("HashSet") ) {
                         return indent + "HASH()"; 
                     } else {
                         if ( javaImports.keySet().contains( objectCreationExpr.getType().getName() ) ) {
                             javaImports.put( objectCreationExpr.getType().getName().asString(), true );
                         }
-                        if ( objectCreationExpr.getType().getName().equals("String") ) {
+                        if ( objectCreationExpr.getType().getName().asString().equals("String") ) {
                             if ( objectCreationExpr.getArguments().size()==1 ) {
                                 Expression e= objectCreationExpr.getArguments().get(0);
                                 Type t= guessType(e);
@@ -2843,9 +2797,10 @@ public class ConvertJavaToIDL {
         return sb.toString();
     }
 
-    private String doConvertMultiTypeParameter(String indent, MultiTypeParameter multiTypeParameter) {
-        return utilFormatTypeList( multiTypeParameter.getTypes() );
-    }
+    // TODO: replace MultiTypeParameters, which disappeared in the newer JavaParser version.
+    // private String doConvertMultiTypeParameter(String indent, MultiTypeParameter multiTypeParameter) {
+    //     return utilFormatTypeList( multiTypeParameter.getTypes() );
+    // }
 
     private String doConvertReferenceType(String indent, ReferenceType referenceType) {
         // TODO: what should we return for non-ArrayTypes here?
@@ -3132,7 +3087,7 @@ public class ConvertJavaToIDL {
             return indent + javaNameToIdlName(s);
         } else if ( getCurrentScopeFields().containsKey(s) ) {
             FieldDeclaration ss= getCurrentScopeFields().get(s);
-            boolean isStatic= isStaticField(ss);
+            boolean isStatic= ConversionUtils.isStaticField(ss);
             if ( isStatic ) {
                 scope = javaNameToIdlName( theClassName ); 
                 return indent + scope + (scope.length()==0 ? "" : "_") + javaNameToIdlName(s);
