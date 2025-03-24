@@ -1986,22 +1986,23 @@ public class ConvertJavaToIDL {
             return "[" + utilFormatExprList( "",ap.getValues() ) + "]";
         } else {
             String item;
-            if ( arrayCreationExpr.getElementType().equals( Primitive.BYTE ) ||
-                    arrayCreationExpr.getElementType().equals( Primitive.SHORT ) ||
-                    arrayCreationExpr.getElementType().equals( Primitive.INT ) ||
-                    arrayCreationExpr.getElementType().equals( Primitive.LONG ) ) {
+            if ( arrayCreationExpr.getElementType().equals( new PrimitiveType(Primitive.BYTE) ) ||
+                    arrayCreationExpr.getElementType().equals( new PrimitiveType(Primitive.SHORT) ) ||
+                    arrayCreationExpr.getElementType().equals( new PrimitiveType(Primitive.INT) ) ||
+                    arrayCreationExpr.getElementType().equals( new PrimitiveType(Primitive.LONG) ) ) {
                 item="0";
-            } else if ( arrayCreationExpr.getElementType().equals( Primitive.CHAR )) {
+            } else if ( arrayCreationExpr.getElementType().equals( new PrimitiveType(Primitive.CHAR) )) {
                 item= "''";
             } else if ( arrayCreationExpr.getElementType().toString().equals( "String" ) ) { // TODO: no kludgey 
                 item= "''";
             } else {
                 item= "None";
             }
-            if ( arrayCreationExpr.getDimensions().size()>1 ) {
+            if ( arrayCreationExpr.getLevels().size()>1 ) {
                 throw new IllegalStateException("unable to handle multi-dimensional arrays");
             }
-            return "replicate("+item+ ","+doConvert( "", arrayCreationExpr.getDimensions().get(0) ) + ")" ;
+            // TODO: is it possible for levels to be empty?
+            return "replicate("+item+ ","+doConvert( "", arrayCreationExpr.getLevels().get(0) ) + ")" ;
             
         }
     }

@@ -744,12 +744,12 @@ public class ConvertJavaToPython {
                         return new ClassOrInterfaceType("Matcher");
                     }
                 } else if ( scopeType.toString().equals("StringBuilder") ) {
-                    switch ( mce.getName() ) {
+                    switch ( mce.getNameAsString() ) {
                         case "toString":
                             return new ClassOrInterfaceType("String");
                     }
                 } else if ( scopeType.toString().equals("String") ) {
-                    switch ( mce.getName() ) {
+                    switch ( mce.getNameAsString() ) {
                         case "substring": 
                         case "trim": 
                         case "valueOf": 
@@ -765,13 +765,13 @@ public class ConvertJavaToPython {
                             return new PrimitiveType(Primitive.CHAR);
                     }
                 } else if ( scopeType.toString().equals("Arrays") ) {
-                    switch ( mce.getName() ) {
+                    switch ( mce.getNameAsString() ) {
                         case "copyOfRange":
                             return guessType( mce.getArguments().get(0) );
                     }
                 }
             }
-            switch ( mce.getName() ) { // TODO: consider t
+            switch ( mce.getNameAsString() ) { // TODO: consider t
                 case "charAt": return new PrimitiveType(Primitive.CHAR);
                 case "copyOfRange": return guessType( mce.getArguments().get(0) );
             }

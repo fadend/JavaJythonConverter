@@ -1954,7 +1954,7 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertFieldAccessExpr(String indent, FieldAccessExpr fieldAccessExpr) {
-        String s= doConvert( "", fieldAccessExpr.getScope() );
+        String s= doConvert( "", fieldAccessExpr.getScope().get() );
                 
         // test to see if this is an array and "length" of the array is accessed.
         if ( fieldAccessExpr.getName().asString().equals("length") ) {
@@ -1998,8 +1998,8 @@ public class ConvertJavaToJavascript {
         if ( arrayCreationExpr.getInitializer().isPresent() ) {
             return doConvert( indent, arrayCreationExpr.getInitializer().get() );
         } else {
-            if ( arrayCreationExpr.getDimensions()!=null && arrayCreationExpr.getDimensions().size()==1 ) {
-                Expression e1= arrayCreationExpr.getDimensions().get(0);
+            if ( arrayCreationExpr.getLevels().size()==1 ) {
+                Expression e1= arrayCreationExpr.getLevels().get(0);
                 if ( e1 instanceof IntegerLiteralExpr ) {
                     int len= Integer.parseInt(((IntegerLiteralExpr)e1).getValue());
                     // aa= Array.apply(null, Array(50)).map(function (x, i) { return 0; });
@@ -2014,9 +2014,10 @@ public class ConvertJavaToJavascript {
                         sb.append("]");
                         return sb.toString();
                     }
-                } else if ( e1 instanceof NameExpr && getCurrentScopeFields().containsKey(((NameExpr)e1).getName()) ) {
+                } else if ( e1 instanceof NameExpr && getCurrentScopeFields().containsKey(((NameExpr)e1).getNameAsString()) ) {
                     FieldDeclaration fd= getCurrentScopeFields().get(((NameExpr)e1).getName());
-                    if ( fd.getType().equals(new PrimitiveType(Primitive.INT)) && ConversionUtils.isStaticField(fd) ) {
+                    Type fieldType = ConversionUtils.getFieldType(fd);
+                    if ( fieldType.equals(new PrimitiveType(Primitive.INT)) && ConversionUtils.isStaticField(fd) ) {
                         int len= Integer.parseInt( fd.getVariables().get(0).getInitializer().get().toString() );
                         if ( len>7 ) {
                             return "Array.apply(null, Array("+len + ")).map(function (x, i) { return 0; })";
@@ -2033,7 +2034,7 @@ public class ConvertJavaToJavascript {
                         
                     return indent + "[]";
                 } else if ( e1 instanceof NameExpr ) {
-                    return "Array.apply(null, Array("+((NameExpr) e1).getName() + ")).map(function (x, i) { return 0; })";
+                    return "Array.apply(null, Array("+((NameExpr) e1).getNameAsString() + ")).map(function (x, i) { return 0; })";
                 } else if ( e1 instanceof FieldAccessExpr ) {
                     return "Array.apply(null, Array("+doConvert("",e1) + ")).map(function (x, i) { return 0; })";                    
                 }
@@ -2134,22 +2135,22 @@ public class ConvertJavaToJavascript {
             if ( qualifiedName!=null ) {
                 return indent + "new " + qualifiedName + "("+ utilFormatExprList(objectCreationExpr.getArguments())+ ")";
             } else {
-                if ( objectCreationExpr.getAnonymousClassBody()!=null ) {
+                if ( objectCreationExpr.getAnonymousClassBody().isPresent() ) {
                     StringBuilder sb= new StringBuilder();
-                    String body= doConvert( indent, objectCreationExpr.getAnonymousClassBody().get(0) );
+                    String body= doConvert( indent, objectCreationExpr.getAnonymousClassBody().get().get(0) );
                     sb.append(indent).append(objectCreationExpr.getType()).append("(").append(utilFormatExprList(objectCreationExpr.getArguments())).append(")"); 
                     sb.append("*** // J2J: This is extended in an anonymous inner class ***");
                     return sb.toString();
                 } else {
-                    if ( objectCreationExpr.getType().getName().asString().equals("HashMap") ) { 
+                    if ( objectCreationExpr.getType().getNameAsString().equals("HashMap") ) { 
                         return indent + "new Map()";
                     } else if ( objectCreationExpr.getType().getName().asString().equals("ArrayList") ) { 
                         return indent + "new Array()";
                     } else if ( objectCreationExpr.getType().getName().asString().equals("HashSet") ) {
                         return indent + "new Set()"; 
                     } else {
-                        if ( javaImports.keySet().contains( objectCreationExpr.getType().getName() ) ) {
-                            javaImports.put( objectCreationExpr.getType().getName(), true );
+                        if ( javaImports.keySet().contains( objectCreationExpr.getType().getNameAsString() ) ) {
+                            javaImports.put( objectCreationExpr.getType().getNameAsString(), true );
                         }
                         if ( objectCreationExpr.getType().getName().asString().equals("String") ) {
                             if ( objectCreationExpr.getArguments().size()==1 ) {
@@ -2176,28 +2177,25 @@ public class ConvertJavaToJavascript {
         
         List<VariableDeclarator> vv= fieldDeclaration.getVariables();
         sb.append( utilRewriteComments( indent, fieldDeclaration.getComment(), true ) );
-        if ( vv!=null ) {
-            for ( VariableDeclarator v: vv ) {
-                VariableDeclaratorId id= v.getId();
-                String name= id.getName().asString();
-                
-                if ( v.getInitializer().isPresent() && v.getInitializer().get().toString().startsWith("Logger.getLogger") ) {
-                    getCurrentScope().put( name, new ClassOrInterfaceType("Logger") );
-                    //addLogger();
-                    sb.append( indent ).append("// J2J: ").append(fieldDeclaration.toString());
-                    continue;
-                }
-                
-                getCurrentScope().put( name,ConversionUtils.getFieldType(fieldDeclaration) );
-                getCurrentScopeFields().put( name,fieldDeclaration);
+        for ( VariableDeclarator v: vv ) {
+            String name= v.getNameAsString();
+            
+            if ( v.getInitializer().isPresent() && v.getInitializer().get().toString().startsWith("Logger.getLogger") ) {
+                getCurrentScope().put( name, new ClassOrInterfaceType("Logger") );
+                //addLogger();
+                sb.append( indent ).append("// J2J: ").append(fieldDeclaration.toString());
+                continue;
+            }
+            
+            getCurrentScope().put( name,ConversionUtils.getFieldType(fieldDeclaration) );
+            getCurrentScopeFields().put( name,fieldDeclaration);
 
-                String modifiers= s ? "static " : "";
-                
-                if ( v.getInitializer().isPresent() ) {
-                    sb.append( indent ).append(modifiers).append(name).append(" = ").append( doConvert( "",v.getInitializer().get() ) ).append(";\n");
-                } else {
-                    sb.append( indent ).append(modifiers).append( name ).append(";\n");
-                }
+            String modifiers= s ? "static " : "";
+            
+            if ( v.getInitializer().isPresent() ) {
+                sb.append( indent ).append(modifiers).append(name).append(" = ").append( doConvert( "",v.getInitializer().get() ) ).append(";\n");
+            } else {
+                sb.append( indent ).append(modifiers).append( name ).append(";\n");
             }
         }
         return sb.toString();        
@@ -2405,7 +2403,7 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertForEachStmt(String indent, ForEachStmt ForEachStmt) {
-        String vv= ForEachStmt.getVariable().getVariables().get(0).getId().getName().asString();
+        String vv= ForEachStmt.getVariable().getVariables().get(0).getNameAsString();
         StringBuilder sb= new StringBuilder(indent);
         sb.append( doConvert( "", ForEachStmt.getIterable() ) );
         sb.append(".forEach( function ( ").append(vv).append(" ) {\n ");
@@ -2418,7 +2416,7 @@ public class ConvertJavaToJavascript {
         StringBuilder builder= new StringBuilder();
         if ( true ) {        
             
-            getCurrentScopeClasses().put( enumDeclaration.getName(), enumDeclaration );
+            getCurrentScopeClasses().put( enumDeclaration.getNameAsString(), enumDeclaration );
             
             builder.append(indent).append("class ").append(enumDeclaration.getName()).append(" {\n");
             List<EnumConstantDeclaration> ll = enumDeclaration.getEntries();
@@ -2438,10 +2436,10 @@ public class ConvertJavaToJavascript {
                 builder.append(indent).append(s4).append("static ").append(l.getName()).append(" = new ")
                         .append(enumDeclaration.getName()).append("(").append(args).append(")") .append(";\n");
                 String methodName=null;
-                if ( l.getArguments()!=null && l.getArguments().get(0).getChildNodes()!=null ) {
+                if ( !l.getArguments().isEmpty() && !l.getArguments().get(0).getChildNodes().isEmpty() ) {
                     for ( Node n: l.getArguments().get(0).getChildNodes() ) {
                         if ( n instanceof MethodDeclaration ) {
-                            methodName= ((MethodDeclaration)n).getName();
+                            methodName= ((MethodDeclaration)n).getNameAsString();
                             builder.append( doConvert( indent, n ) );
                         }
                     }
