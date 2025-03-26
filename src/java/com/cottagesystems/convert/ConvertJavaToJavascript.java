@@ -175,7 +175,7 @@ public class ConvertJavaToJavascript {
                     break;
                 }
                 linesHandled+= additionalLinesHandled;
-                parseExpression = javaParser.parseExpression(javasrc.substring(offset));
+                parseExpression = ConversionUtils.extractParseResult(javaParser.parseExpression(javasrc.substring(offset)));
                 bb.append( "\n" ).append( doConvert( "", parseExpression ) );
             }
             String src= bb.toString();
@@ -234,7 +234,7 @@ public class ConvertJavaToJavascript {
         try {
             String ssrc= utilMakeClass(javasrc);
             ByteArrayInputStream ins= new ByteArrayInputStream( ssrc.getBytes(Charset.forName("UTF-8")) );
-            CompilationUnit unit= javaParser.parse(ins,Charset.forName("UTF-8"));
+            CompilationUnit unit= ConversionUtils.extractParseResult(javaParser.parse(ins,Charset.forName("UTF-8")));
             String src= doConvert( "", unit );
             src= utilUnMakeClass(src);
             
@@ -1271,15 +1271,15 @@ public class ConvertJavaToJavascript {
             return utilBinaryExprType( leftType, rightType );
             
         } else if ( clas instanceof FieldAccessExpr ) {
-            String fieldName= ((FieldAccessExpr)clas).getField();
+            String fieldName= ((FieldAccessExpr)clas).getNameAsString();
             return getCurrentScope().get(fieldName);
         } else if ( clas instanceof ArrayAccessExpr ) {
             ArrayAccessExpr aae= (ArrayAccessExpr)clas;
             Type arrayType=  guessType( aae.getName() );
             if ( arrayType==null ) {
                 return null;
-            } else if ( arrayType instanceof ReferenceType && ((ReferenceType)arrayType).getArrayCount()==1 ) {
-                return ((ReferenceType) arrayType).getType();
+            } else if ( arrayType instanceof ArrayType && ((ArrayType)arrayType).getArrayLevel()==1 ) {
+                return ((ArrayType) arrayType).getElementType();
             } else {
                 return null;
             }
@@ -1603,7 +1603,7 @@ public class ConvertJavaToJavascript {
      * @return 
      */
     private String doConvertMethodCallExpr(String indent, MethodCallExpr methodCallExpr) {
-        Expression clas= methodCallExpr.getScope();
+        Expression clas= methodCallExpr.getScope().get();
         String name= methodCallExpr.getName().asString();
         List<Expression> args= methodCallExpr.getArguments();
             
@@ -1712,7 +1712,7 @@ public class ConvertJavaToJavascript {
                 case "toString": {
                     Type t= guessType(args.get(0));
                     String js;
-                    if ( t instanceof ReferenceType && ((ReferenceType)t).getArrayCount()==1 && isIntegerType(((ReferenceType)t).getType()) ) {
+                    if ( t instanceof ArrayType && ((ArrayType)t).getArrayLevel()==1 && isIntegerType(((ArrayType)t).getElementType()) ) {
                         js= "', '.join( map( str, "+doConvert("",args.get(0))+" ) )";
                     } else {
                         js= "', '.join("+doConvert("",args.get(0))+")";
@@ -1913,7 +1913,7 @@ public class ConvertJavaToJavascript {
                 if ( mm==null ) {
                     return indent + m.getName() + "." + name + "("+ utilFormatExprList(args) +")";
                 } else {
-                    boolean isStatic= ModifierSet.isStatic(mm.getModifiers() );
+                    boolean isStatic= ConversionUtils.isStaticMethod(mm);
                     if ( isStatic ) {
                         return indent + m.getName() + "." + name + "("+ utilFormatExprList(args) +")";
                     } else {
@@ -1954,7 +1954,7 @@ public class ConvertJavaToJavascript {
     }
 
     private String doConvertFieldAccessExpr(String indent, FieldAccessExpr fieldAccessExpr) {
-        String s= doConvert( "", fieldAccessExpr.getScope().get() );
+        String s= doConvert( "", fieldAccessExpr.getScope() );
                 
         // test to see if this is an array and "length" of the array is accessed.
         if ( fieldAccessExpr.getName().asString().equals("length") ) {
@@ -1966,7 +1966,7 @@ public class ConvertJavaToJavascript {
             if (t==null ) {
                 t= getCurrentScope().get(inContext);
             }
-            if ( t!=null && t instanceof ReferenceType && ((ReferenceType)t).getArrayCount()>0 ) { 
+            if ( t!=null && t instanceof ArrayType && ((ArrayType)t).getArrayLevel()>0 ) { 
                 return indent + s + ".length"; // don't change
             }
         }
@@ -1999,7 +1999,7 @@ public class ConvertJavaToJavascript {
             return doConvert( indent, arrayCreationExpr.getInitializer().get() );
         } else {
             if ( arrayCreationExpr.getLevels().size()==1 ) {
-                Expression e1= arrayCreationExpr.getLevels().get(0);
+                Expression e1= arrayCreationExpr.getLevels().get(0).getDimension().orElse(null);
                 if ( e1 instanceof IntegerLiteralExpr ) {
                     int len= Integer.parseInt(((IntegerLiteralExpr)e1).getValue());
                     // aa= Array.apply(null, Array(50)).map(function (x, i) { return 0; });
@@ -2208,20 +2208,20 @@ public class ConvertJavaToJavascript {
         String nextIndent= indent + s4;
         String nextNextIndent = nextIndent + s4;
         for ( SwitchEntry ses: switchStmt.getEntries() ) {
-            Expression label= ses.getLabel();
-            String slabel;
-            if ( label==null ) {
+            List<Expression> labels= ses.getLabels();
+            List<Statement> statements= ses.getStatements();
+            if ( labels.isEmpty() ) {
                 b.append( nextIndent ).append( "default:\n");
             } else {
-                slabel= doConvert("",ses.getLabel());
-                b.append( nextIndent ).append( "case ").append( slabel ).append(":\n");
+                for ( Expression label : labels ) {
+                    String slabel= doConvert("",label);
+                    b.append( nextIndent ).append( "case ").append( slabel ).append(":\n");
+                }
             }
             
-            if ( ses.getStatements()!=null ) {
-                for ( Statement s : ses.getStatements() ) {
-                    b.append( doConvert( nextNextIndent,s) );
-                    b.append( "\n" );
-                }
+            for ( Statement s : ses.getStatements() ) {
+                b.append( doConvert( nextNextIndent,s) );
+                b.append( "\n" );
             }
         }
         b.append( indent ).append("}\n");
@@ -2295,7 +2295,7 @@ public class ConvertJavaToJavascript {
         int count=0;
         for ( CatchClause cc: tryStmt.getCatchClauses() ) {
             count++;
-            String id= doConvert( "",cc.getExcept().getId() );
+            String id= cc.getParameter().getNameAsString();
             sb.append(indent).append("} catch (").append(id).append(") {");
             if ( count==1 ) {
                 sb.append("\n");
@@ -2305,27 +2305,34 @@ public class ConvertJavaToJavascript {
             
             sb.append( doConvert( indent+s4, cc.getBody() ) );
         }
-        if ( tryStmt.getFinallyBlock()!=null ) {
+        if ( tryStmt.getFinallyBlock().isPresent() ) {
             sb.append( indent ).append( "} finally {\n");
-            sb.append( doConvert( indent+s4, tryStmt.getFinallyBlock() ) );
+            sb.append( doConvert( indent+s4, tryStmt.getFinallyBlock().get() ) );
         }
         sb.append(indent).append("}\n");
         return sb.toString();
     }
 
     private String doConvertReferenceType(String indent, ReferenceType referenceType) {
-        switch (referenceType.getArrayCount()) {
-            case 0:
-                return referenceType.getType().toString();
-            case 1:
-                return referenceType.getType().toString()+"[]";
-            case 2:
-                return referenceType.getType().toString()+"[][]";
-            case 3:
-                return referenceType.getType().toString()+"[][][]";
-            default:
-                return "***" + referenceType.toString() +"***";
+        // TODO: what should we return for non-ArrayTypes here?
+        if (!(referenceType instanceof ArrayType)) {
+            return "***J2J" + referenceType.toString() +"***J2J";
         }
+        ArrayType arrayType = (ArrayType) referenceType;
+        String typeName = referenceType.getElementType().toString();
+        switch (arrayType.getArrayLevel()) {
+            case 0:
+                return typeName;
+            case 1:
+                return typeName+"[]";
+            case 2:
+                return typeName+"[][]";
+            case 3:
+                return typeName+"[][][]";
+            default:
+                return "***J2J" + referenceType.toString() +"***J2J";
+        }
+        
     }
 
     private String doConvertCastExpr(String indent, CastExpr castExpr) {
