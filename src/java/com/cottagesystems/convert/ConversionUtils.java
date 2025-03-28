@@ -5,6 +5,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ParseResult;
+import com.github.javaparser.ParseException;
 import com.github.javaparser.ParseProblemException;
 import com.github.javaparser.Position;
 import com.github.javaparser.Range;
@@ -41,11 +42,19 @@ final class ConversionUtils {
         return variables.get(0).getType();
     }
 
-    public static <T> T extractParseResult(ParseResult<T> result) {
+    public static <T> T extractParseResult(ParseResult<T> result) throws ParseException {
+        /**
+         * Extracts the underlying result if successful, otherwise raising an exception.
+         *
+         * @param result Result to be examined.
+         * @return The underlying parsed out data type.
+         * @throws ParseException with an informative message about what went wrong.
+         */
         if (result.isSuccessful()) {
             return result.getResult().get();
         }
-        throw new ParseProblemException(result.getProblems());
+        // TODO: switch to using ParseProblemException, which JavaParser uses now.
+        throw new ParseException(new ParseProblemException(result.getProblems()).toString());
     }
 
     /**

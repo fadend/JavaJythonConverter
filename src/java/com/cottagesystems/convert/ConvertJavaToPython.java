@@ -715,8 +715,8 @@ public class ConvertJavaToPython {
             Type arrayType=  guessType( aae.getName() );
             if ( arrayType==null ) {
                 return null;
-            } else if ( arrayType instanceof ReferenceType && ((ReferenceType)arrayType).getArrayCount()==1 ) {
-                return ((ReferenceType) arrayType).getType();
+            } else if ( arrayType instanceof ArrayType && ((ArrayType)arrayType).getArrayLevel()==1 ) {
+                return ((ArrayType) arrayType).getElementType();
             } else {
                 return null;
             }
@@ -1143,7 +1143,7 @@ public class ConvertJavaToPython {
                 case "toString": {
                     Type t= guessType(args.get(0));
                     String js;
-                    if ( t instanceof ReferenceType && ((ReferenceType)t).getArrayCount()==1 && isIntegerType(((ReferenceType)t).getType()) ) {
+                    if ( t instanceof ArrayType && ((ArrayType)t).getArrayLevel()==1 && isIntegerType(((ArrayType)t).getElementType()) ) {
                         if ( pythonTarget==PythonTarget.jython_2_2 ) {
                             js= "', '.join( map( str, "+doConvert("",args.get(0))+" ) )";
                         } else {
@@ -1321,7 +1321,7 @@ public class ConvertJavaToPython {
                     } else {
                         boolean isStatic= ConversionUtils.isStaticMethod(mm);
                         if ( isStatic ) {
-                            return indent + javaNameToPythonName( m.getName() ) + "." + javaNameToPythonName( name ) + "("+ utilFormatExprList(args) +")";
+                            return indent + javaNameToPythonName( m.getNameAsString() ) + "." + javaNameToPythonName( name ) + "("+ utilFormatExprList(args) +")";
                         } else {
                             return indent + "self." + javaNameToPythonName( name ) + "("+ utilFormatExprList(args) +")";
                         }
@@ -1545,7 +1545,7 @@ public class ConvertJavaToPython {
                 result= doConvertClassOrInterfaceType(indent,(ClassOrInterfaceType)n);
                 break;
             case "Parameter":
-                result= indent + ((Parameter)n).getId().getName(); // TODO: varargs, etc
+                result= indent + ((Parameter)n).getNameAsString(); // TODO: varargs, etc
                 break;
             case "ForEachStmt":
                 result= doConvertForEachStmt(indent,(ForEachStmt)n);
@@ -1645,7 +1645,7 @@ public class ConvertJavaToPython {
                 Type t= new ArrayType( ((PrimitiveType)v.getType()));
                 localVariablesStack.peek().put( s, t );
             } else {
-                localVariablesStack.peek().put( s, variableDeclarationExpr.getType() );
+                localVariablesStack.peek().put( s, v.getType() );
             }
             if ( v.getInitializer().isPresent() ) {
                 if ( v.getInitializer().get() instanceof ConditionalExpr ) { // avoid conditional expression by rewriting
@@ -1657,8 +1657,8 @@ public class ConvertJavaToPython {
                     b.append(indent).append(s4).append( s );
                     b.append(" = ").append(doConvert("",cc.getElseExpr() )).append("\n");
                 } else {
-                    if ( v.getInitializer().get() instanceof ObjectCreationExpr && ((ObjectCreationExpr)v.getInitializer().get()).getAnonymousClassBody()!=null ) {
-                        for ( BodyDeclaration bd: ((ObjectCreationExpr)v.getInitializer().get()).getAnonymousClassBody() ) {
+                    if ( v.getInitializer().get() instanceof ObjectCreationExpr && ((ObjectCreationExpr)v.getInitializer().get()).getAnonymousClassBody().isPresent() ) {
+                        for ( BodyDeclaration bd: ((ObjectCreationExpr)v.getInitializer().get()).getAnonymousClassBody().get() ) {
                             b.append(doConvert( indent+"# J2J:", bd ) );
                         }
                     }
@@ -1896,10 +1896,13 @@ public class ConvertJavaToPython {
             } else {
                 item= "None";
             }
-            if ( arrayCreationExpr.getDimensions().get(0) instanceof BinaryExpr ) {
-                return "["+item+"] * (" + doConvert( "", arrayCreationExpr.getDimensions().get(0) ) + ")"; //TODO: might not be necessary
+            // TODO: what if levels is empty or first dimension is missing?
+            Expression dimension = arrayCreationExpr.getLevels().get(0).getDimension().get();
+            String dimensionString = doConvert( "", dimension );
+            if ( dimension instanceof BinaryExpr ) {
+                return "["+item+"] * (" + dimensionString + ")"; //TODO: might not be necessary
             } else {
-                return "["+item+"] * " + doConvert( "", arrayCreationExpr.getDimensions().get(0) ) + ""; //TODO: might not be necessary
+                return "["+item+"] * " + dimensionString + ""; //TODO: might not be necessary
             }
             
         }
@@ -1924,7 +1927,7 @@ public class ConvertJavaToPython {
             if (t==null ) {
                 t= getCurrentScope().get(inContext);
             }
-            if ( t!=null && t instanceof ReferenceType && ((ReferenceType)t).getArrayCount()>0 ) { 
+            if ( t!=null && t instanceof ArrayType && ((ArrayType)t).getArrayLevel()>0 ) { 
                 return indent + "len("+ s + ")";
             }
         }

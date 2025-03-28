@@ -581,7 +581,7 @@ public class ConvertJavaToIDL {
         
         if ( b.getLeft() instanceof MethodCallExpr && b.getRight() instanceof IntegerLiteralExpr ) {
             MethodCallExpr mce= (MethodCallExpr)b.getLeft();
-            if ( mce.getName().asString().equals("compareTo") 
+            if ( mce.getName().asString().equals("compareTo")
                     && ((IntegerLiteralExpr)b.getRight()).toString().equals("0") ) {
                 if ( null!=b.getOperator() ) switch (b.getOperator()) {
                     case GREATER:
@@ -695,7 +695,7 @@ public class ConvertJavaToIDL {
             Type leftType= guessType( be.getLeft() );
             Type rightType= guessType( be.getRight() );
             if ( be.getOperator()==BinaryExpr.Operator.AND ||
-                    be.getOperator()==BinaryExpr.Operator.OR || 
+                    be.getOperator()==BinaryExpr.Operator.OR ||
                     be.getOperator()==BinaryExpr.Operator.EQUALS ||
                     be.getOperator()==BinaryExpr.Operator.NOT_EQUALS ||
                     be.getOperator()==BinaryExpr.Operator.GREATER ||
@@ -721,8 +721,8 @@ public class ConvertJavaToIDL {
             Type arrayType=  guessType( aae.getName() );
             if ( arrayType==null ) {
                 return null;
-            } else if ( arrayType instanceof ReferenceType && ((ReferenceType)arrayType).getArrayCount()==1 ) {
-                return ((ReferenceType) arrayType).getType();
+            } else if ( arrayType instanceof ArrayType && ((ArrayType)arrayType).getArrayLevel()==1 ) {
+                return ((ArrayType) arrayType).getElementType();
             } else {
                 return null;
             }
@@ -1708,13 +1708,13 @@ public class ConvertJavaToIDL {
             }
             
             // TODO: we should guard against the many reserved words in IDL, like switch
-            if ( initializer!=null 
-                    && ( initializer instanceof ArrayInitializerExpr ) 
+            if ( initializer!=null
+                    && ( initializer instanceof ArrayInitializerExpr )
                     && ( v.getType() instanceof PrimitiveType ) ) {
                 Type t= new ArrayType( ((PrimitiveType)v.getType()));
                 localVariablesStack.peek().put( s, t );
             } else {
-                localVariablesStack.peek().put( s, variableDeclarationExpr.getType() );
+                localVariablesStack.peek().put( s, v.getType() );
             }
             if ( initializer!=null ) {
                 if ( initializer instanceof ObjectCreationExpr && ((ObjectCreationExpr)initializer).getAnonymousClassBody().isPresent() ) {
@@ -1902,7 +1902,7 @@ public class ConvertJavaToIDL {
             throw new IllegalArgumentException("expected only one variable in foreach statement");
         }
         String variableName = variables.get(0).getName().toString();
-        Type variableType= forEachStmt.getVariable().getType();
+        Type variableType= variables.get(0).getType();
         localVariablesStack.push( new HashMap<>(localVariablesStack.peek()) );
         localVariablesStack.peek().put( variableName,variableType );
         b.append( indent ).append("foreach ").append(variableName).append(", ").append(doConvert("",forEachStmt.getIterable() )).append(" do begin\n");
@@ -2027,7 +2027,7 @@ public class ConvertJavaToIDL {
             if (t==null ) {
                 t= getCurrentScope().get(inContext);
             }
-            if ( t!=null && t instanceof ReferenceType && ((ReferenceType)t).getArrayCount()>0 ) { 
+            if ( t!=null && t instanceof ArrayType && ((ArrayType)t).getArrayLevel()>0 ) { 
                 return indent + "n_elements("+ s + ")";
             }
         }
