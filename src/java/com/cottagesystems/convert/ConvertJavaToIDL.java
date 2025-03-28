@@ -1710,8 +1710,8 @@ public class ConvertJavaToIDL {
             // TODO: we should guard against the many reserved words in IDL, like switch
             if ( initializer!=null 
                     && ( initializer instanceof ArrayInitializerExpr ) 
-                    && ( variableDeclarationExpr.getType() instanceof PrimitiveType ) ) {
-                Type t= new ArrayType( ((PrimitiveType)variableDeclarationExpr.getType()));
+                    && ( v.getType() instanceof PrimitiveType ) ) {
+                Type t= new ArrayType( ((PrimitiveType)v.getType()));
                 localVariablesStack.peek().put( s, t );
             } else {
                 localVariablesStack.peek().put( s, variableDeclarationExpr.getType() );

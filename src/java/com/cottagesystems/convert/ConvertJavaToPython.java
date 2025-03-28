@@ -1553,9 +1553,6 @@ public class ConvertJavaToPython {
             case "EmptyStmt":
                 result= doConvertEmptyStmt(indent,(EmptyStmt)n);
                 break;
-            case "VariableDeclaratorId":
-                result= indent + ((VariableDeclaratorId)n).getName();
-                break;
             case "SuperExpr":
                 SuperExpr se= (SuperExpr)n;
                 if ( pythonTarget==PythonTarget.jython_2_2 ) {
@@ -1586,7 +1583,7 @@ public class ConvertJavaToPython {
         pushScopeStack(true);
         
         StringBuilder result= new StringBuilder();
-        List<Statement> statements= blockStmt.getStmts();
+        List<Statement> statements= blockStmt.getStatements();
         if ( statements==null ) {
             popScopeStack();
             return indent + "pass\n";
@@ -1644,8 +1641,8 @@ public class ConvertJavaToPython {
             }
             if ( v.getInitializer().isPresent() 
                     && ( v.getInitializer().get() instanceof ArrayInitializerExpr ) 
-                    && ( variableDeclarationExpr.getType() instanceof PrimitiveType ) ) {
-                Type t= new ArrayType( ((PrimitiveType)variableDeclarationExpr.getType()));
+                    && ( v.getType() instanceof PrimitiveType ) ) {
+                Type t= new ArrayType( ((PrimitiveType)v.getType()));
                 localVariablesStack.peek().put( s, t );
             } else {
                 localVariablesStack.peek().put( s, variableDeclarationExpr.getType() );
@@ -1708,17 +1705,18 @@ public class ConvertJavaToPython {
             b.append(":\n");
             b.append( doConvert(indent+s4,ifStmt.getThenStmt() ) ).append("\n");
         }
-        if ( ifStmt.getElseStmt()!=null ) {
-            if ( ifStmt.getElseStmt() instanceof IfStmt ) {
-                b.append( specialConvertElifStmt( indent, (IfStmt)ifStmt.getElseStmt() ) );
+        if ( ifStmt.getElseStmt().isPresent() ) {
+            Statement elseStmt = ifStmt.getElseStmt().get();
+            if ( elseStmt instanceof IfStmt ) {
+                b.append( specialConvertElifStmt( indent, (IfStmt)elseStmt ) );
             } else {
                 b.append(indent).append("else");
-                if ( ifStmt.getElseStmt() instanceof BlockStmt ) {
+                if ( elseStmt instanceof BlockStmt ) {
                     b.append(":\n");
-                    b.append( doConvert(indent,ifStmt.getElseStmt()) );
+                    b.append( doConvert(indent,elseStmt) );
                 } else {
                     b.append(": ");
-                    b.append( doConvert("",ifStmt.getElseStmt() ) ).append("\n");
+                    b.append( doConvert("",elseStmt ) ).append("\n");
                 }
             }
         }
@@ -2146,7 +2144,7 @@ public class ConvertJavaToPython {
                 sb.append("test = ").append(classOrInterfaceDeclaration.getName()).append("()\n");
                 for ( Node n : classOrInterfaceDeclaration.getChildNodes() ) {
                     if ( n instanceof MethodDeclaration 
-                            && ((MethodDeclaration)n).getName().startsWith("test") 
+                            && ((MethodDeclaration)n).getNameAsString().startsWith("test") 
                             && ((MethodDeclaration)n).getParameters()==null ) {
                         sb.append("test.").append(((MethodDeclaration) n).getName()).append("()\n");
                     }
@@ -2175,7 +2173,7 @@ public class ConvertJavaToPython {
         
         if ( methodDeclaration.getAnnotations()!=null ) {
             for ( AnnotationExpr a : methodDeclaration.getAnnotations() ) {
-                if ( a.getName().getName().asString().equals("Deprecated") ) {
+                if ( a.getNameAsString().equals("Deprecated") ) {
                     return "";
                 }
             }
@@ -2325,7 +2323,7 @@ public class ConvertJavaToPython {
         List<Expression> labels= new ArrayList<>();
         for ( int ises = 0; ises<nses; ises++ ) {
             SwitchEntry ses = switchStmt.getEntries().get(ises);
-            List<Statement> statements= ses.getStmts();
+            List<Statement> statements= ses.getStatements();
             if ( statements.isEmpty() ) {
                 // fall-through not supported
                 //sb.append("# fall through not supported, need or in if test\n");
@@ -2376,7 +2374,7 @@ public class ConvertJavaToPython {
             
             labels.clear();
             
-            if ( ses.getLabel().isEmpty() && ises!=(nses-1) ) {
+            if ( ses.getLabels().isEmpty() && ises!=(nses-1) ) {
                 throw new IllegalArgumentException("default must be last of switch statement");
             }
             if ( !ses.getLabels().isEmpty() && !( ( statements.get(statements.size()-1) instanceof BreakStmt ) ||
@@ -2781,7 +2779,7 @@ public class ConvertJavaToPython {
         StringBuilder builder= new StringBuilder();
         if ( true ) {        
             
-            getCurrentScopeClasses().put( enumDeclaration.getName(), enumDeclaration );
+            getCurrentScopeClasses().put( enumDeclaration.getNameAsString(), enumDeclaration );
             
             builder.append(indent).append("class ").append(enumDeclaration.getName()).append(":\n");
             List<EnumConstantDeclaration> ll = enumDeclaration.getEntries();
@@ -2804,7 +2802,7 @@ public class ConvertJavaToPython {
                 if ( l.getArguments().get(0).getChildNodes()!=null ) {
                     for ( Node n: l.getArguments().get(0).getChildNodes() ) {
                         if ( n instanceof MethodDeclaration ) {
-                            methodName= ((MethodDeclaration)n).getName();
+                            methodName= ((MethodDeclaration)n).getNameAsString();
                             builder.append( doConvert( indent, n ) );
                         }
                     }
@@ -2861,7 +2859,7 @@ public class ConvertJavaToPython {
             scope = ""; // local variable
         } else if ( getCurrentScopeFields().containsKey(s) ) {
             FieldDeclaration ss= getCurrentScopeFields().get(s);
-            boolean isStatic= ModifierSet.isStatic( ss.getModifiers() );
+            boolean isStatic= ConversionUtils.isStaticField(ss);
             if ( isStatic ) {
                 scope = javaNameToPythonName( theClassName );
             } else {
@@ -2903,7 +2901,7 @@ public class ConvertJavaToPython {
     }
     
     private boolean utilCheckNoVariableModification(BlockStmt body, String name ) {
-        for ( Statement s: body.getStmts() ) {
+        for ( Statement s: body.getStatements() ) {
             if ( !utilCheckNoVariableModification( s, name ) ) {
                 return false;
             }
@@ -2978,7 +2976,7 @@ public class ConvertJavaToPython {
                                     Parameter parm1= m1.getParameters().get(k);
                                     Parameter parm2= m2.getParameters().get(k);
                                     
-                                    if ( parm1.getId().getName().equals( parm2.getId().getName())  &&
+                                    if ( parm1.getName().equals( parm2.getName())  &&
                                         parm1.getType().equals(parm2.getType() ) ) {
                                         
                                     } else {
@@ -2987,8 +2985,8 @@ public class ConvertJavaToPython {
                                 }
                                 Parameter extraParameter= m2.getParameters().get(m2.getParameters().size()-1);
                                 // is there one call to the other method which adds an argument?
-                                if ( m1.getBody().getStmts().size()==1 ) { 
-                                    Statement s= m1.getBody().getStmts().get(0);
+                                if ( m1.getBody().get().getStatements().size()==1 ) { 
+                                    Statement s= m1.getBody().get().getStatements().get(0);
                                     if ( s instanceof ExpressionStmt ) {
                                         ExpressionStmt es1= (ExpressionStmt)s;
                                         Expression e= es1.getExpression();
@@ -2998,7 +2996,7 @@ public class ConvertJavaToPython {
                                                 List<Node> arguments= es1.getExpression().getChildNodes();
                                                 if ( arguments.size()==m2.getParameters().size() ) {
                                                     Node n= arguments.get(arguments.size()-1);
-                                                    String name= extraParameter.getId().getName().asString();
+                                                    String name= extraParameter.getNameAsString();
                                                     result[i]= "can be combined with " + name + "="+ n;
                                                 }
                                             }

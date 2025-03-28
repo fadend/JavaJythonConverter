@@ -434,16 +434,13 @@ public class ConvertJavaToJavascript {
                 result= doConvertClassOrInterfaceType(indent,(ClassOrInterfaceType)n);
                 break;
             case "Parameter":
-                result= indent + ((Parameter)n).getId().getName(); // TODO: varargs, etc
+                result= indent + ((Parameter)n).getNameAsString(); // TODO: varargs, etc
                 break;
             case "ForEachStmt":
                 result= doConvertForEachStmt(indent,(ForEachStmt)n);
                 break;
             case "EmptyStmt":
                 result= doConvertEmptyStmt(indent,(EmptyStmt)n);
-                break;
-            case "VariableDeclaratorId":
-                result= indent + ((VariableDeclaratorId)n).getName();
                 break;
             case "SuperExpr":
                 SuperExpr se= (SuperExpr)n;
@@ -940,17 +937,15 @@ public class ConvertJavaToJavascript {
         if ( onlyStatic && !isStatic ) {
             return "";
         } else if ( isStatic ) {
-            if ( methodDeclaration.getName().asString().equals("main") ) {
+            if ( methodDeclaration.getNameAsString().equals("main") ) {
                 hasMain= true;
             }
         }
         
-        if ( methodDeclaration.getAnnotations()!=null ) {
-            for ( AnnotationExpr a : methodDeclaration.getAnnotations() ) {
-                if ( a.getName().getName().asString().equals("Deprecated") ) {
+        for ( AnnotationExpr a : methodDeclaration.getAnnotations() ) {
+                if ( a.getName().asString().equals("Deprecated") ) {
                     return "";
                 }
-            }
         }        
 
         StringBuilder sb= new StringBuilder();
@@ -990,8 +985,8 @@ public class ConvertJavaToJavascript {
         }
         sb.append( ") {\n" );
         
-        if ( methodDeclaration.getBody()!=null ) {
-            sb.append( doConvert( indent+s4, methodDeclaration.getBody() ) );  
+        if ( methodDeclaration.getBody().isPresent() ) {
+            sb.append( doConvert( indent+s4, methodDeclaration.getBody().get() ) );  
         } else {
             // nothing needed
         }
@@ -1059,8 +1054,8 @@ public class ConvertJavaToJavascript {
             }
             if ( v.getInitializer().isPresent() 
                     && ( v.getInitializer().get() instanceof ArrayInitializerExpr ) 
-                    && ( variableDeclarationExpr.getType() instanceof PrimitiveType ) ) {
-                Type t= new ArrayType(((PrimitiveType)variableDeclarationExpr.getType()));
+                    && ( v.getType() instanceof PrimitiveType ) ) {
+                Type t= new ArrayType(((PrimitiveType)v.getType()));
                 // TODO: could we also just v.getType() for t here?
                 localVariablesStack.peek().put( s, t );
             } else {
